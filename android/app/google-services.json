@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "962454041636",
+    "project_id": "mobile-programming-d4e67",
+    "storage_bucket": "mobile-programming-d4e67.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:962454041636:android:e92e0e38261b3929d554b1",
+        "android_client_info": {
+          "package_name": "com.moyeobom.ai_meet_planner"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAuhdQMihuBWbpUCJRVPUWdlvALrLj55Hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
