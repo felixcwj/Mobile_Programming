@@ -25,6 +25,9 @@ class Document:
         self.path = path
         self.id = path.split("/")[-1]
 
+    def collection(self, child):
+        return Query(self.db, self.path + "/" + child)
+
     def get(self, transaction=None):
         return Snapshot(self.path, self.db.data.get(self.path))
 
