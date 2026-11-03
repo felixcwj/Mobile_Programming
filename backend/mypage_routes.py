@@ -255,6 +255,8 @@ def make_mypage_router(db, current_user, nickname_key, password_login):
             data = snapshot.to_dict() or {}
             if not data.get("deletion_requested_at"):
                 raise HTTPException(409, "진행 중인 탈퇴 신청이 없습니다.")
+            if data.get("deletion_processing_at"):
+                raise HTTPException(409, "계정 삭제 처리가 시작되어 취소할 수 없습니다.")
             due = data.get("deletion_due_at")
             if due is not None and datetime.now(timezone.utc) >= due:
                 raise HTTPException(409, "탈퇴 취소 가능 기간이 지났습니다.")
