@@ -265,12 +265,29 @@ def make_calendar_router(db, current_user):
             elif data and change.base_version != data.get("version"):
                 outcome = "conflict"
             elif data:
-                events(uid).document(event_id).update({
-                    **event_fields(change.event),
-                    "version": data["version"] + 1,
-                    "updated_at": firestore.SERVER_TIMESTAMP,
-                })
-                outcome = "updated"
+                @firestore.transactional
+                def update_external(transaction):
+                    event_ref = events(uid).document(event_id)
+                    snapshot = event_ref.get(transaction=transaction)
+                    if not snapshot.exists:
+                        return "already_absent"
+                    latest = snapshot.to_dict() or {}
+                    if latest.get("deleted"):
+                        return "deleted_locally"
+                    if latest.get("external_delete_pending"):
+                        return "confirmation_required"
+                    if latest.get("source") == "meeting":
+                        return "meeting_not_editable"
+                    if change.base_version != latest.get("version"):
+                        return "conflict"
+                    transaction.update(event_ref, {
+                        **event_fields(change.event),
+                        "version": latest["version"] + 1,
+                        "updated_at": firestore.SERVER_TIMESTAMP,
+                    })
+                    return "updated"
+
+                outcome = update_external(db.transaction())
             else:
                 new_ref = events(uid).document(str(uuid4()))
                 new_data = {
