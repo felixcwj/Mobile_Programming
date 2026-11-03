@@ -33,6 +33,7 @@ class EventUpdate(EventInput):
 
 
 class CalendarSelection(BaseModel):
+    device_id: str = Field(min_length=1, max_length=120)
     calendar_ids: list[str] = Field(max_length=20)
 
     @model_validator(mode="after")
@@ -59,6 +60,7 @@ class ExternalChange(BaseModel):
 
 
 class SyncBatch(BaseModel):
+    device_id: str = Field(min_length=1, max_length=120)
     changes: list[ExternalChange] = Field(max_length=100)
 
 
@@ -186,29 +188,29 @@ def make_calendar_router(db, current_user):
         return {"deleted": True}
 
     @router.get("/selected-calendars")
-    def get_selected(user: User):
-        doc = db.collection("users").document(user["uid"]).collection("calendar_config").document("selection").get()
-        return {"calendar_ids": (doc.to_dict() or {}).get("calendar_ids", [])}
+    def get_selected(user: User, device_id: str = Query(min_length=1, max_length=120)):
+        doc = db.collection("users").document(user["uid"]).collection("calendar_devices").document(device_id).get()
+        return {"device_id": device_id, "calendar_ids": (doc.to_dict() or {}).get("calendar_ids", [])}
 
     @router.put("/selected-calendars")
     def set_selected(body: CalendarSelection, user: User):
-        db.collection("users").document(user["uid"]).collection("calendar_config").document("selection").set({
+        db.collection("users").document(user["uid"]).collection("calendar_devices").document(body.device_id).set({
             "calendar_ids": body.calendar_ids,
             "updated_at": firestore.SERVER_TIMESTAMP,
         })
-        return {"calendar_ids": body.calendar_ids}
+        return {"device_id": body.device_id, "calendar_ids": body.calendar_ids}
 
     @router.post("/sync/external")
     def sync_external(body: SyncBatch, user: User):
         uid = user["uid"]
-        selected_ref = db.collection("users").document(uid).collection("calendar_config").document("selection")
+        selected_ref = db.collection("users").document(uid).collection("calendar_devices").document(body.device_id)
         selected = set((selected_ref.get().to_dict() or {}).get("calendar_ids", []))
         results = []
         for change in body.changes:
             if change.calendar_id not in selected:
                 results.append({"external_event_id": change.external_event_id, "status": "calendar_not_selected"})
                 continue
-            link_id = hashlib.sha256((change.calendar_id + "\0" + change.external_event_id).encode()).hexdigest()
+            link_id = hashlib.sha256((body.device_id + "\0" + change.calendar_id + "\0" + change.external_event_id).encode()).hexdigest()
             link_ref = db.collection("users").document(uid).collection("external_event_links").document(link_id)
             event_id = link_ref.get().to_dict()
             event_id = event_id.get("event_id") if event_id else None
@@ -244,7 +246,7 @@ def make_calendar_router(db, current_user):
                 new_data = {
                     **event_fields(change.event),
                     "source": "external",
-                    "external": {"calendar_id": change.calendar_id, "external_event_id": change.external_event_id},
+                    "external": {"device_id": body.device_id, "calendar_id": change.calendar_id, "external_event_id": change.external_event_id},
                     "external_delete_pending": False,
                     "deleted": False,
                     "version": 1,
@@ -298,7 +300,7 @@ def make_calendar_router(db, current_user):
 
         previous_link = decide(db.transaction())
         if previous_link and body.decision == "keep":
-            link_id = hashlib.sha256((previous_link["calendar_id"] + "\0" + previous_link["external_event_id"]).encode()).hexdigest()
+            link_id = hashlib.sha256((previous_link["device_id"] + "\0" + previous_link["calendar_id"] + "\0" + previous_link["external_event_id"]).encode()).hexdigest()
             db.collection("users").document(user["uid"]).collection("external_event_links").document(link_id).delete()
         return {"decision": body.decision, "event_id": event_id}
 
