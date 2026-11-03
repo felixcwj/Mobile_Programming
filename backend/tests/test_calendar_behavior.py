@@ -36,6 +36,9 @@ class Document:
             raise ValueError("already exists")
         self.set(data)
 
+    def delete(self):
+        self.db.data.pop(self.path, None)
+
     def normalize(self, data):
         return {
             key: (datetime.now(timezone.utc) if value is calendar_routes.firestore.SERVER_TIMESTAMP else deepcopy(value))
