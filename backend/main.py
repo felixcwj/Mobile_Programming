@@ -109,6 +109,11 @@ def current_user(
         raise HTTPException(401, "로그인 인증이 만료되었거나 올바르지 않습니다.")
 
 
+from calendar_routes import make_calendar_router
+
+app.include_router(make_calendar_router(db, current_user))
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "database": "firebase"}

@@ -1,0 +1,32 @@
+name: Calendar backend checks
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/calendar-backend.yml"
+  push:
+    branches:
+      - feature/calendar-backend
+    paths:
+      - "backend/**"
+      - ".github/workflows/calendar-backend.yml"
+
+jobs:
+  test-calendar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install -r backend/requirements.txt pytest
+      - name: Verify Python syntax
+        run: |
+          python -m compileall -q backend
+      - name: Run isolated contract tests
+        run: |
+          cd backend
+          python -m pytest -q tests/test_calendar_contract.py tests/test_calendar_behavior.py
