@@ -102,7 +102,12 @@ def context(monkeypatch):
             return {"idToken": "unused"}
         return check()
 
-    monkeypatch.setattr(mypage_routes.auth, "get_user", lambda uid: SimpleNamespace(email="alice@example.com", disabled=False))
+    def get_user(uid):
+        if uid != "alice":
+            raise mypage_routes.auth.UserNotFoundError("unknown user")
+        return SimpleNamespace(email="alice@example.com", disabled=False)
+
+    monkeypatch.setattr(mypage_routes.auth, "get_user", get_user)
     update_user = Mock()
     revoke = Mock()
     monkeypatch.setattr(mypage_routes.auth, "update_user", update_user)
@@ -168,7 +173,7 @@ def test_deletion_request_and_cancel(context):
 def test_router_paths(context):
     client, _, _, _ = context
     paths = client.get("/openapi.json").json()["paths"]
-    assert set(paths) >= {"/mypage/profile", "/mypage/password", "/mypage/deletion"}
+    assert set(paths) >= {"/mypage/profile", "/mypage/password", "/mypage/deletion", "/mypage/id", "/mypage/donation"}
 
 
 def test_donation_disabled_without_url(context, monkeypatch):
@@ -209,3 +214,23 @@ def test_donation_rejects_unsafe_link(context, monkeypatch, url):
     assert response.status_code == 200
     assert response.json()["enabled"] is False
     assert response.json()["url"] is None
+
+
+def test_login_id_change_without_uid_migration(context):
+    client, db, _, _ = context
+    bad = client.put("/mypage/id", json={"new_id": "other_id", "password": "incorrect"})
+    assert bad.status_code == 401
+    response = client.put("/mypage/id", json={"new_id": "other_id", "password": "old_password"})
+    assert response.status_code == 200, response.text
+    assert response.json()["id"] == "other_id"
+    assert db.storage["users/alice"]["id"] == "other_id"
+    assert db.storage["usernames/other_id"] == {"uid": "alice"}
+    assert client.put("/mypage/id", json={"new_id": "other_id", "password": "old_password"}).json()["changed"] is False
+
+
+def test_login_id_change_rejects_taken_alias(context):
+    client, db, _, _ = context
+    db.storage["usernames/taken_id"] = {"uid": "another"}
+    response = client.put("/mypage/id", json={"new_id": "taken_id", "password": "old_password"})
+    assert response.status_code == 409
+    assert db.storage["users/alice"]["id"] == "alice"
