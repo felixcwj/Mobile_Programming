@@ -60,8 +60,8 @@ def test_calendar_router_exposes_required_routes():
         return {"uid": "test"}
 
     app.include_router(calendar_routes.make_calendar_router(None, user))
-    paths = {(route.path, method) for route in app.routes for method in getattr(route, "methods", [])}
-    print("REGISTERED ROUTES", sorted(paths))
+    spec = app.openapi()
+    paths = {(path, method.upper()) for path, operations in spec["paths"].items() for method in operations}
     for route in [
         ("/calendar/events", "GET"),
         ("/calendar/events", "POST"),
