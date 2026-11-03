@@ -75,7 +75,7 @@ def test_calendar_router_exposes_required_routes():
         ("/calendar/pending-deletions", "GET"),
         ("/calendar/events/{event_id}/external-delete-decision", "POST"),
     ]:
-        assert route in paths
+        assert route in paths, sorted(paths)
 
 
 def test_invalid_calendar_selection_request_returns_422():
