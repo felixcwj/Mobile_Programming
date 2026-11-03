@@ -24,4 +24,4 @@ jobs:
       - name: Run MyPage API tests
         run: |
           cd backend
-          python -m pytest -q tests/test_mypage.py
+          python -m pytest -q tests/test_mypage.py tests/test_mypage_login_compat.py
