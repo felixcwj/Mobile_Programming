@@ -15,6 +15,7 @@ All `/calendar/*` APIs require `Authorization: Bearer <Firebase ID token>`. Each
 | GET | /calendar/events/{id} | Read a personal event |
 | PUT | /calendar/events/{id} | Update event; include current `version` |
 | DELETE | /calendar/events/{id}?version=... | Soft-delete event |
+| GET | /calendar/pending-deletions | List events needing confirmation after external deletion |
 | GET | /calendar/selected-calendars | Get selected device calendar IDs |
 | PUT | /calendar/selected-calendars | Set selected device calendar IDs |
 | POST | /calendar/sync/external | Receive external device calendar upserts/deletions |
@@ -44,5 +45,7 @@ Example create request:
 - AI meeting events need a shared room/event schema agreed with the home backend owner; no invented integration has been made.
 - End-to-end testing with Firebase credentials, Android/iOS integration, and Firestore rules validation have not yet been completed.
 - For production usage: device-specific calendar IDs should be scoped by device, support deselection cleanup, and the sync batch needs limits/rate limiting and conflict-resolution tests.
+
+Review findings: deleted events are hidden from direct reads and calendar lists, and updates to deleted events are blocked. External deletion confirmations have a dedicated listing endpoint. Static inspection only; syntax, Firebase integration, concurrent sync and device round trips have not been executed.
 
 This code is a review draft. Do not merge until the integration above is tested.
