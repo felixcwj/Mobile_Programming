@@ -68,6 +68,13 @@ class DeleteDecision(BaseModel):
     decision: Literal["delete", "keep"]
 
 
+class ExternalLinkRequest(BaseModel):
+    device_id: str = Field(min_length=1, max_length=120)
+    calendar_id: str = Field(min_length=1, max_length=200)
+    external_event_id: str = Field(min_length=1, max_length=300)
+    version: int = Field(ge=1)
+
+
 def make_calendar_router(db, current_user):
     router = APIRouter(prefix="/calendar", tags=["calendar"])
     User = Annotated[dict, Depends(current_user)]
@@ -267,6 +274,68 @@ def make_calendar_router(db, current_user):
                 outcome = "created" if created else "already_linked"
             results.append({"external_event_id": change.external_event_id, "event_id": event_id, "status": outcome})
         return {"results": results}
+
+    @router.get("/sync/changes")
+    def changes_for_device(
+        user: User,
+        updated_since: datetime = Query(),
+        limit: int = Query(default=100, ge=1, le=200),
+    ):
+        if updated_since.tzinfo is None:
+            raise HTTPException(422, "시간대 정보가 필요합니다.")
+        query = (
+            events(user["uid"])
+            .where("updated_at", ">=", updated_since.astimezone(timezone.utc))
+            .order_by("updated_at")
+            .limit(limit)
+        )
+        snapshots = list(query.stream())
+        return {"events": [public_event(s) for s in snapshots], "limit": limit}
+
+    @router.post("/events/{event_id}/external-link")
+    def link_external(event_id: str, body: ExternalLinkRequest, user: User):
+        uid = user["uid"]
+        selected_ref = db.collection("users").document(uid).collection("calendar_devices").document(body.device_id)
+        selected = (selected_ref.get().to_dict() or {}).get("calendar_ids", [])
+        if body.calendar_id not in selected:
+            raise HTTPException(403, "선택하지 않은 외부 캘린더입니다.")
+        link_id = hashlib.sha256(
+            (body.device_id + "\\0" + body.calendar_id + "\\0" + body.external_event_id).encode()
+        ).hexdigest()
+        link_ref = db.collection("users").document(uid).collection("external_event_links").document(link_id)
+        ref = events(uid).document(event_id)
+
+        @firestore.transactional
+        def bind(transaction):
+            existing = link_ref.get(transaction=transaction)
+            snapshot = ref.get(transaction=transaction)
+            if not snapshot.exists:
+                raise HTTPException(404, "일정을 찾을 수 없습니다.")
+            data = snapshot.to_dict() or {}
+            if data.get("deleted") or data.get("source") == "meeting":
+                raise HTTPException(409, "연동할 수 없는 일정입니다.")
+            if data.get("version") != body.version:
+                raise HTTPException(409, "일정 버전이 변경되었습니다.")
+            if existing.exists:
+                if existing.to_dict().get("event_id") == event_id:
+                    return "already_linked"
+                raise HTTPException(409, "외부 일정이 다른 일정과 연결되어 있습니다.")
+            if data.get("external"):
+                raise HTTPException(409, "이미 다른 외부 일정과 연결되어 있습니다.")
+            transaction.create(link_ref, {"event_id": event_id})
+            transaction.update(ref, {
+                "external": {
+                    "device_id": body.device_id,
+                    "calendar_id": body.calendar_id,
+                    "external_event_id": body.external_event_id,
+                },
+                "version": body.version + 1,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
+            return "linked"
+
+        outcome = bind(db.transaction())
+        return {"event_id": event_id, "status": outcome}
 
     @router.get("/pending-deletions")
     def pending_deletions(user: User):
