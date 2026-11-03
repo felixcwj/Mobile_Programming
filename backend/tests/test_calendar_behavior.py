@@ -36,13 +36,19 @@ class Document:
             raise ValueError("already exists")
         self.set(data)
 
+    def normalize(self, data):
+        return {
+            key: (datetime.now(timezone.utc) if value is calendar_routes.firestore.SERVER_TIMESTAMP else deepcopy(value))
+            for key, value in data.items()
+        }
+
     def set(self, data):
-        self.db.data[self.path] = deepcopy(data)
+        self.db.data[self.path] = self.normalize(data)
 
     def update(self, values):
         if self.path not in self.db.data:
             raise ValueError("not found")
-        self.db.data[self.path].update(deepcopy(values))
+        self.db.data[self.path].update(self.normalize(values))
 
 
 class Query:
