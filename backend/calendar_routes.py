@@ -75,7 +75,7 @@ def make_calendar_router(db, current_user):
 
     def read_event(uid, event_id):
         snapshot = events(uid).document(event_id).get()
-        if not snapshot.exists:
+        if not snapshot.exists or (snapshot.to_dict() or {}).get("deleted"):
             raise HTTPException(404, "일정을 찾을 수 없습니다.")
         return snapshot, snapshot.to_dict() or {}
 
@@ -119,6 +119,7 @@ def make_calendar_router(db, current_user):
             **event_fields(body),
             "source": "personal",
             "version": 1,
+            "deleted": False,
             "external": None,
             "external_delete_pending": False,
             "created_at": firestore.SERVER_TIMESTAMP,
@@ -141,6 +142,10 @@ def make_calendar_router(db, current_user):
             if not snapshot.exists:
                 raise HTTPException(404, "일정을 찾을 수 없습니다.")
             data = snapshot.to_dict() or {}
+            if data.get("deleted"):
+                raise HTTPException(404, "이미 삭제된 일정입니다.")
+            if data.get("external_delete_pending"):
+                raise HTTPException(409, "외부 캘린더 삭제 확인을 먼저 처리하세요.")
             if data.get("source") == "meeting":
                 raise HTTPException(403, "약속 방 일정은 방 기능에서 수정해야 합니다.")
             if data.get("version") != body.version:
@@ -164,6 +169,8 @@ def make_calendar_router(db, current_user):
             if not snapshot.exists:
                 raise HTTPException(404, "일정을 찾을 수 없습니다.")
             data = snapshot.to_dict() or {}
+            if data.get("deleted"):
+                raise HTTPException(404, "이미 삭제된 일정입니다.")
             if data.get("source") == "meeting":
                 raise HTTPException(403, "약속 방 일정은 방 기능에서 삭제해야 합니다.")
             if data.get("version") != version:
@@ -259,6 +266,11 @@ def make_calendar_router(db, current_user):
             results.append({"external_event_id": change.external_event_id, "event_id": event_id, "status": outcome})
         return {"results": results}
 
+    @router.get("/pending-deletions")
+    def pending_deletions(user: User):
+        query = events(user["uid"]).where("external_delete_pending", "==", True).limit(100)
+        return {"events": [public_event(s) for s in query.stream() if not (s.to_dict() or {}).get("deleted")]}
+
     @router.post("/events/{event_id}/external-delete-decision")
     def external_delete_decision(event_id: str, body: DeleteDecision, user: User):
         ref = events(user["uid"]).document(event_id)
@@ -269,7 +281,7 @@ def make_calendar_router(db, current_user):
             if not snapshot.exists:
                 raise HTTPException(404, "일정을 찾을 수 없습니다.")
             data = snapshot.to_dict() or {}
-            if not data.get("external_delete_pending"):
+            if data.get("deleted") or not data.get("external_delete_pending"):
                 raise HTTPException(409, "삭제 확인 대기 중인 일정이 아닙니다.")
             changes = {
                 "external_delete_pending": False,
@@ -286,7 +298,6 @@ def make_calendar_router(db, current_user):
 
         previous_link = decide(db.transaction())
         if previous_link and body.decision == "keep":
-            import hashlib
             link_id = hashlib.sha256((previous_link["calendar_id"] + "\0" + previous_link["external_event_id"]).encode()).hexdigest()
             db.collection("users").document(user["uid"]).collection("external_event_links").document(link_id).delete()
         return {"decision": body.decision, "event_id": event_id}
