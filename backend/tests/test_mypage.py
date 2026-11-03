@@ -169,3 +169,43 @@ def test_router_paths(context):
     client, _, _, _ = context
     paths = client.get("/openapi.json").json()["paths"]
     assert set(paths) >= {"/mypage/profile", "/mypage/password", "/mypage/deletion"}
+
+
+def test_donation_disabled_without_url(context, monkeypatch):
+    client, _, _, _ = context
+    monkeypatch.delenv("DEVELOPER_DONATION_URL", raising=False)
+    response = client.get("/mypage/donation")
+    assert response.status_code == 200
+    assert response.json() == {
+        "title": "개발자에게 후원하기",
+        "enabled": False,
+        "url": None,
+    }
+
+
+def test_donation_exposes_real_https_link(context, monkeypatch):
+    client, _, _, _ = context
+    monkeypatch.setenv("DEVELOPER_DONATION_URL", "https://example.com/support")
+    response = client.get("/mypage/donation")
+    assert response.status_code == 200
+    assert response.json() == {
+        "title": "개발자에게 후원하기",
+        "enabled": True,
+        "url": "https://example.com/support",
+    }
+
+
+@pytest.mark.parametrize("url", [
+    "javascript:alert(1)",
+    "http://example.com/pay",
+    "https://user:pass@example.com/pay",
+    "https://example.com/path with space",
+    "https:///broken",
+])
+def test_donation_rejects_unsafe_link(context, monkeypatch, url):
+    client, _, _, _ = context
+    monkeypatch.setenv("DEVELOPER_DONATION_URL", url)
+    response = client.get("/mypage/donation")
+    assert response.status_code == 200
+    assert response.json()["enabled"] is False
+    assert response.json()["url"] is None
