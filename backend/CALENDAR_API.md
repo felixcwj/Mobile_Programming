@@ -44,3 +44,17 @@ Example:
 - iOS testing requires access to an Apple device/build; the course deliverable is Android APK.
 - Firestore real credentials/service account and security-rule review are required for end-to-end verification. Never commit private credentials.
 - To run isolated tests, install `backend/requirements.txt` plus `pytest`, then run `cd backend && python -m pytest -q tests/test_calendar_contract.py`.
+
+## Mac Firebase connection diagnosis (2026-11-03)
+
+The maintainer verified Firestore REST GET returns HTTP 200 using the project service account, but `grpc.channel_ready_future` timed out. An HTTPS/TCP 443 probe is not equivalent to the gRPC HTTP/2 protocol check. Official Python Firestore high-level `firestore.client()` API requires gRPC; the REST GET success does **not** make the current FastAPI endpoints work. Do not change `main.py` to an invented `transport="rest"` argument.
+
+For a safe read-only verification on the maintainer Mac:
+
+```bash
+~/.config/mobile-programming/venv/bin/python backend/check_firestore_rest.py
+```
+
+To check whether local networking is the cause of the gRPC timeouts, temporarily use an alternative network such as a phone hotspot, then rerun the gRPC probe. Do not share service account JSON or commit it. Run the complete FastAPI/Firebase integration tests only on a trusted environment where the gRPC client is functional.
+
+The REST test does not verify create/update/delete, token login or Firestore transactions. Current isolated CI tests use a fake database and are not a substitute for production integration tests.
