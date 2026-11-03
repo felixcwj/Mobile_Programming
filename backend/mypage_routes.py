@@ -6,7 +6,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from firebase_admin import auth, firestore
-from google.api_core.exceptions import AlreadyExists
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -39,6 +38,10 @@ class PasswordChange(BaseModel):
 
 
 class DeletionRequest(BaseModel):
+    password: str = Field(min_length=1)
+
+class UsernameChange(BaseModel):
+    new_id: str = Field(min_length=4, max_length=12, pattern=r"^[A-Za-z0-9_]+$")
     password: str = Field(min_length=1)
 
 
@@ -140,6 +143,52 @@ def make_mypage_router(db, current_user, nickname_key, password_login):
             except Exception:
                 pass
         return present(profile(uid))
+
+    @router.put("/id")
+    async def change_login_id(body: UsernameChange, user: User):
+        uid = user["uid"]
+        new_id = body.new_id.lower()
+        await reauthenticate(uid, body.password)
+        try:
+            auth.get_user(new_id)
+        except auth.UserNotFoundError:
+            pass
+        except Exception:
+            raise HTTPException(503, "아이디 중복 확인에 실패했습니다.")
+        else:
+            if new_id != uid:
+                raise HTTPException(409, "이미 사용 중인 아이디입니다.")
+
+        ref = profile_ref(uid)
+        username_ref = db.collection("usernames").document(new_id)
+
+        @firestore.transactional
+        def reserve(transaction):
+            snapshot = ref.get(transaction=transaction)
+            if not snapshot.exists:
+                raise HTTPException(404, "프로필 정보를 찾을 수 없습니다.")
+            data = snapshot.to_dict() or {}
+            if data.get("deletion_requested_at"):
+                raise HTTPException(409, "탈퇴 신청을 취소한 후 변경하세요.")
+            previous = str(data.get("id") or uid).lower()
+            if previous == new_id:
+                return False
+            existing = username_ref.get(transaction=transaction)
+            if existing.exists and (existing.to_dict() or {}).get("uid") != uid:
+                raise HTTPException(409, "이미 사용 중인 아이디입니다.")
+            old_ref = db.collection("usernames").document(previous)
+            old_doc = old_ref.get(transaction=transaction)
+            transaction.set(username_ref, {"uid": uid})
+            transaction.update(ref, {
+                "id": new_id,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
+            if old_doc.exists and (old_doc.to_dict() or {}).get("uid") == uid:
+                transaction.delete(old_ref)
+            return True
+
+        changed = reserve(db.transaction())
+        return {"id": new_id, "changed": changed, "message": "로그인 아이디가 변경되었습니다."}
 
     @router.post("/password")
     async def change_password(body: PasswordChange, user: User):
