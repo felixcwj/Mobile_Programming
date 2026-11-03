@@ -300,7 +300,7 @@ def make_calendar_router(db, current_user):
         if body.calendar_id not in selected:
             raise HTTPException(403, "선택하지 않은 외부 캘린더입니다.")
         link_id = hashlib.sha256(
-            (body.device_id + "\\0" + body.calendar_id + "\\0" + body.external_event_id).encode()
+            (body.device_id + "\0" + body.calendar_id + "\0" + body.external_event_id).encode()
         ).hexdigest()
         link_ref = db.collection("users").document(uid).collection("external_event_links").document(link_id)
         ref = events(uid).document(event_id)
