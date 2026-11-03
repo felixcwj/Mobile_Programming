@@ -6,6 +6,7 @@ The MyPage API is implemented in `backend/mypage_routes.py` and registered in `b
 
 | Method | Path | Description |
 | --- | --- | --- |
+| GET | `/mypage/donation` | Get the configured external donation URL and availability |
 | GET | `/mypage/profile` | Current user's profile |
 | PUT | `/mypage/profile` | Change nickname, name and phone number |
 | POST | `/mypage/password` | Change password with current password verification |
@@ -37,7 +38,7 @@ The profile nickname reservation change uses a Firestore transaction to prevent 
 
 - **Username changes are not implemented.** The existing authentication backend uses the human-chosen login ID as the immutable Firebase Auth UID, so naively changing the `id` field would break login and document ownership. This needs a dedicated username-to-UID mapping or migration, agreed with the auth backend owner.
 - **30-day account deletion is pending status only.** A server scheduler / authorized worker must actually delete the Firebase Auth account, Firestore user data, nickname reservation, and associated data on/after `deletion_due_at` in a safe, auditable and idempotent process. Until that worker exists, no account is automatically deleted. A product policy is also needed on whether pending users may continue to log in. Current implementation allows authentication while pending, and blocks profile/password edits until the request is cancelled.
-- The donation action can be a frontend external link. No payment processing or backend payment API is implemented.
+- **Developer donation:** The MyPage menu label must be exactly `개발자에게 후원하기` (no emoji). `GET /mypage/donation` returns `{"title":"개발자에게 후원하기","enabled":false,"url":null}` until the server operator configures `DEVELOPER_DONATION_URL=https://real-provider.example/path` in the backend's private environment. Only HTTPS URLs without embedded credentials are returned. Flutter should show the item near the bottom of MyPage, open `url` in an external browser only when `enabled=true`, and otherwise display an unavailable message or disable the item. This backend does **not** collect payments or record donations; never invent an actual provider URL.
 - Tests use an isolated fake Firestore database and mocked auth. Actual Firebase integration tests and security rule review are still required. Mac gRPC was seen timing out while REST HTTPS worked; do not assume these APIs are production-ready until runtime integration succeeds.
 
 ## Test
