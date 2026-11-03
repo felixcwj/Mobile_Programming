@@ -88,10 +88,13 @@ def make_mypage_router(db, current_user, nickname_key, password_login):
             old_key = data.get("nickname_key") or nickname_key(data.get("nickname", ""))
             new_ref = db.collection("nickname_reservations").document(new_nickname_key)
             old_ref = db.collection("nickname_reservations").document(old_key)
+            old_owned = False
             if old_key != new_nickname_key:
                 reservation = new_ref.get(transaction=transaction)
                 if reservation.exists and (reservation.to_dict() or {}).get("uid") != uid:
                     raise HTTPException(409, "이미 사용 중인 닉네임입니다.")
+                old_reservation = old_ref.get(transaction=transaction)
+                old_owned = old_reservation.exists and (old_reservation.to_dict() or {}).get("uid") == uid
             transaction.update(ref, {
                 "nickname": body.nickname,
                 "nickname_key": new_nickname_key,
@@ -101,8 +104,7 @@ def make_mypage_router(db, current_user, nickname_key, password_login):
             })
             if old_key != new_nickname_key:
                 transaction.set(new_ref, {"uid": uid, "nickname": body.nickname})
-                old_reservation = old_ref.get(transaction=transaction)
-                if old_reservation.exists and (old_reservation.to_dict() or {}).get("uid") == uid:
+                if old_owned:
                     transaction.delete(old_ref)
             return old_key != new_nickname_key
 
