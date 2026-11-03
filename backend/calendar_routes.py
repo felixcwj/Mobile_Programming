@@ -219,8 +219,15 @@ def make_calendar_router(db, current_user):
                 continue
             link_id = hashlib.sha256((body.device_id + "\0" + change.calendar_id + "\0" + change.external_event_id).encode()).hexdigest()
             link_ref = db.collection("users").document(uid).collection("external_event_links").document(link_id)
-            event_id = link_ref.get().to_dict()
-            event_id = event_id.get("event_id") if event_id else None
+            link_data = link_ref.get().to_dict() or {}
+            if link_data.get("status") == "kept":
+                results.append({
+                    "external_event_id": change.external_event_id,
+                    "event_id": link_data.get("event_id"),
+                    "status": "kept_locally",
+                })
+                continue
+            event_id = link_data.get("event_id")
             if event_id:
                 snapshot = events(uid).document(event_id).get()
                 data = snapshot.to_dict() if snapshot.exists else None
@@ -228,17 +235,33 @@ def make_calendar_router(db, current_user):
                 data = None
             if change.status == "deleted":
                 if data and not data.get("deleted"):
-                    events(uid).document(event_id).update({
-                        "external_delete_pending": True,
-                        "updated_at": firestore.SERVER_TIMESTAMP,
-                    })
-                    outcome = "confirmation_required"
+                    if not data.get("external_delete_pending"):
+                        @firestore.transactional
+                        def mark_pending(transaction):
+                            snapshot = events(uid).document(event_id).get(transaction=transaction)
+                            if not snapshot.exists or (snapshot.to_dict() or {}).get("deleted"):
+                                return False
+                            current = snapshot.to_dict() or {}
+                            if current.get("external_delete_pending"):
+                                return True
+                            transaction.update(events(uid).document(event_id), {
+                                "external_delete_pending": True,
+                                "version": current["version"] + 1,
+                                "updated_at": firestore.SERVER_TIMESTAMP,
+                            })
+                            return True
+
+                        outcome = "confirmation_required" if mark_pending(db.transaction()) else "already_absent"
+                    else:
+                        outcome = "confirmation_required"
                 else:
                     outcome = "already_absent"
             elif data and data.get("deleted"):
                 outcome = "deleted_locally"
             elif data and data.get("external_delete_pending"):
                 outcome = "confirmation_required"
+            elif data and data.get("source") == "meeting":
+                outcome = "meeting_not_editable"
             elif data and change.base_version != data.get("version"):
                 outcome = "conflict"
             elif data:
@@ -267,7 +290,7 @@ def make_calendar_router(db, current_user):
                     if existing.exists:
                         return existing.to_dict().get("event_id"), False
                     transaction.create(new_ref, new_data)
-                    transaction.create(link_ref, {"event_id": new_ref.id})
+                    transaction.create(link_ref, {"event_id": new_ref.id, "status": "linked"})
                     return new_ref.id, True
 
                 event_id, created = create_linked(db.transaction())
@@ -322,7 +345,7 @@ def make_calendar_router(db, current_user):
                 raise HTTPException(409, "외부 일정이 다른 일정과 연결되어 있습니다.")
             if data.get("external"):
                 raise HTTPException(409, "이미 다른 외부 일정과 연결되어 있습니다.")
-            transaction.create(link_ref, {"event_id": event_id})
+            transaction.create(link_ref, {"event_id": event_id, "status": "linked"})
             transaction.update(ref, {
                 "external": {
                     "device_id": body.device_id,
@@ -364,13 +387,21 @@ def make_calendar_router(db, current_user):
             else:
                 changes["external"] = None
                 changes["source"] = "personal"
+            previous_link = data.get("external")
+            if previous_link:
+                link_id = hashlib.sha256((
+                    previous_link["device_id"] + "\0" + previous_link["calendar_id"] + "\0" + previous_link["external_event_id"]
+                ).encode()).hexdigest()
+                link_ref = db.collection("users").document(user["uid"]).collection("external_event_links").document(link_id)
+                existing_link = link_ref.get(transaction=transaction)
+                if existing_link.exists and (existing_link.to_dict() or {}).get("event_id") == event_id:
+                    transaction.set(link_ref, {
+                        "event_id": event_id,
+                        "status": "kept" if body.decision == "keep" else "deleted",
+                    })
             transaction.update(ref, changes)
-            return data.get("external")
 
-        previous_link = decide(db.transaction())
-        if previous_link and body.decision == "keep":
-            link_id = hashlib.sha256((previous_link["device_id"] + "\0" + previous_link["calendar_id"] + "\0" + previous_link["external_event_id"]).encode()).hexdigest()
-            db.collection("users").document(user["uid"]).collection("external_event_links").document(link_id).delete()
+        decide(db.transaction())
         return {"decision": body.decision, "event_id": event_id}
 
     return router
