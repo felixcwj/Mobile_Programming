@@ -284,3 +284,38 @@ def test_external_update_rejects_stale_version(setup_calendar):
     assert stale.status_code == 200
     assert stale.json()["results"][0]["status"] == "conflict"
     assert client.get(f"/calendar/events/{event_id}").json()["version"] == 1
+
+
+def test_external_update_with_current_version(setup_calendar):
+    client, _ = setup_calendar
+    client.put("/calendar/selected-calendars", json={"device_id": "phone", "calendar_ids": ["school"]})
+    first = client.post("/calendar/sync/external", json={
+        "device_id": "phone",
+        "changes": [{
+            "calendar_id": "school", "external_event_id": "e1",
+            "status": "upsert", "event": payload(),
+        }],
+    })
+    event_id = first.json()["results"][0]["event_id"]
+    updated = client.post("/calendar/sync/external", json={
+        "device_id": "phone",
+        "changes": [{
+            "calendar_id": "school", "external_event_id": "e1",
+            "status": "upsert", "event": {**payload(), "title": "Exam"},
+            "base_version": 1,
+        }],
+    })
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["results"][0]["status"] == "updated"
+    assert client.get(f"/calendar/events/{event_id}").json()["version"] == 2
+    assert client.get(f"/calendar/events/{event_id}").json()["title"] == "Exam"
+
+
+def test_meeting_events_cannot_be_edited_through_personal_api(setup_calendar):
+    client, db = setup_calendar
+    db.data["users/alpha/calendar_events/room_event"] = {
+        "title": "Meeting", "source": "meeting", "version": 1,
+        "deleted": False, "external_delete_pending": False,
+    }
+    assert client.put("/calendar/events/room_event", json={**payload(), "version": 1}).status_code == 403
+    assert client.delete("/calendar/events/room_event", params={"version": 1}).status_code == 403
