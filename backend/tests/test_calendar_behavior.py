@@ -215,3 +215,72 @@ def test_external_delete_requires_confirmation(setup_calendar):
     })
     assert keep.status_code == 200, keep.text
     assert client.get(f"/calendar/events/{event_id}").json()["source"] == "personal"
+
+
+def test_kept_external_event_does_not_reimport_or_reprompt(setup_calendar):
+    client, db = setup_calendar
+    assert client.put("/calendar/selected-calendars", json={
+        "device_id": "phone",
+        "calendar_ids": ["personal"],
+    }).status_code == 200
+    upsert = {
+        "device_id": "phone",
+        "changes": [{
+            "calendar_id": "personal",
+            "external_event_id": "external1",
+            "status": "upsert",
+            "event": payload(),
+        }],
+    }
+    first = client.post("/calendar/sync/external", json=upsert)
+    assert first.status_code == 200, first.text
+    event_id = first.json()["results"][0]["event_id"]
+    deletion = {
+        "device_id": "phone",
+        "changes": [{
+            "calendar_id": "personal",
+            "external_event_id": "external1",
+            "status": "deleted",
+        }],
+    }
+    pending = client.post("/calendar/sync/external", json=deletion)
+    assert pending.json()["results"][0]["status"] == "confirmation_required"
+    waiting = client.get(f"/calendar/events/{event_id}").json()
+    assert waiting["version"] == 2
+    repeated = client.post("/calendar/sync/external", json=deletion)
+    assert repeated.json()["results"][0]["status"] == "confirmation_required"
+    assert client.get(f"/calendar/events/{event_id}").json()["version"] == 2
+    kept = client.post(
+        f"/calendar/events/{event_id}/external-delete-decision",
+        json={"decision": "keep"},
+    )
+    assert kept.status_code == 200, kept.text
+    assert client.get(f"/calendar/events/{event_id}").json()["source"] == "personal"
+    again = client.post("/calendar/sync/external", json=deletion)
+    assert again.json()["results"][0]["status"] == "kept_locally"
+    replay = client.post("/calendar/sync/external", json=upsert)
+    assert replay.json()["results"][0]["status"] == "kept_locally"
+    assert len([p for p in db.data if "/calendar_events/" in p]) == 1
+    assert client.get("/calendar/pending-deletions").json()["events"] == []
+
+
+def test_external_update_rejects_stale_version(setup_calendar):
+    client, _ = setup_calendar
+    client.put("/calendar/selected-calendars", json={
+        "device_id": "phone", "calendar_ids": ["personal"],
+    })
+    batch = {
+        "device_id": "phone",
+        "changes": [{
+            "calendar_id": "personal",
+            "external_event_id": "e1",
+            "status": "upsert",
+            "event": payload(),
+        }],
+    }
+    initial = client.post("/calendar/sync/external", json=batch)
+    event_id = initial.json()["results"][0]["event_id"]
+    stale = client.post("/calendar/sync/external", json=batch)
+    assert stale.status_code == 200
+    assert stale.json()["results"][0]["status"] == "conflict"
+    assert client.get(f"/calendar/events/{event_id}").json()["version"] == 1
