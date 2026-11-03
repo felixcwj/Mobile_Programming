@@ -38,7 +38,7 @@ The profile nickname reservation change uses a Firestore transaction to prevent 
 ## Important limitations requiring integration work
 
 - **Username change implementation is included in this draft.** `PUT /mypage/id` accepts `{"new_id":"newlogin","password":"currentpassword"}`. Firebase UID remains stable, while `users/{uid}.id` and `usernames/{new_id}` are updated transactionally. To support this, `main.py` signup, login and ID-availability paths were changed to look up `usernames` with legacy UID fallback. This is a compatibility-sensitive change to the authentication teammate’s code: review together before merging, and run actual Firebase integration tests. Existing Firebase UID values remain reserved even after a rename. It does not migrate existing users into new UID values.
-- **30-day account deletion is pending status only.** A server scheduler / authorized worker must actually delete the Firebase Auth account, Firestore user data, nickname reservation, and associated data on/after `deletion_due_at` in a safe, auditable and idempotent process. Until that worker exists, no account is automatically deleted. A product policy is also needed on whether pending users may continue to log in. Current implementation allows authentication while pending, and blocks profile/password edits until the request is cancelled.
+- **30-day deletion:** The request/status/cancel endpoints are implemented. A guarded `backend/account_cleanup.py` CLI now finds due requests and defaults to dry-run. When explicitly executed, it claims due records, deletes Firebase Auth users, releases their username/nickname reservations when owned, and recursively deletes the user document and subcollections. **It is not scheduled or deployed**. Until a trusted server/worker is configured with credentials and recurring execution, accounts are not automatically deleted after 30 days. The cleanup scope does not yet cover unknown shared room/member references; review home-backend data ownership and retention policy before running with `--execute`. Pending users can authenticate and cancel, but cannot modify profile/password until cancellation.
 - **Developer donation:** The MyPage menu label must be exactly `개발자에게 후원하기` (no emoji). `GET /mypage/donation` returns `{"title":"개발자에게 후원하기","enabled":false,"url":null}` until the server operator configures `DEVELOPER_DONATION_URL=https://real-provider.example/path` in the backend's private environment. Only HTTPS URLs without embedded credentials are returned. Flutter should show the item near the bottom of MyPage, open `url` in an external browser only when `enabled=true`, and otherwise display an unavailable message or disable the item. This backend does **not** collect payments or record donations; never invent an actual provider URL.
 - Tests use an isolated fake Firestore database and mocked auth, including legacy login and renamed username login. Actual Firebase integration tests and security rule review are still required. Mac gRPC was seen timing out while REST HTTPS worked; do not assume these APIs are production-ready until runtime integration succeeds.
 
@@ -49,4 +49,16 @@ cd backend
 python -m pytest -q tests/test_mypage.py tests/test_mypage_login_compat.py
 ```
 
-GitHub Actions validates syntax, MyPage API behavior and username login compatibility. This PR is intentionally draft and is not merged into main.
+GitHub Actions validates syntax, MyPage API behavior, username login compatibility and cleanup dry-run guardrails.
+
+## Deletion worker safety
+
+This worker is intentionally not enabled in CI or on a production scheduler. It is destructive only with explicit opt-in, and should not be executed until team data retention and shared-room cleanup are decided. For an operator-only dry-run (never put the service-account JSON in Git):
+
+```bash
+python backend/account_cleanup.py --service-account "$HOME/.config/mobile-programming/serviceAccountKey.json" --project-id mobile-programming-d4e67
+```
+
+For a future authorized deployment, schedule this script on a trusted host and supply environment-scoped credentials. Execution requires `--execute` and an `ALLOW_ACCOUNT_DELETION` variable exactly matching the selected Firebase project ID. Do not configure or run destructive mode until remaining data cleanup has been reviewed.
+
+No real Firebase writes or deletes were performed while developing this PR. This PR is intentionally draft and is not merged into main.
