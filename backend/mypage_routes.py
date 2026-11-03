@@ -1,4 +1,6 @@
+import os
 import re
+from urllib.parse import urlsplit
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -66,6 +68,29 @@ def make_mypage_router(db, current_user, nickname_key, password_login):
             raise HTTPException(403, "비밀번호 인증을 사용할 수 없는 계정입니다.")
         await password_login(account.email, password)
         return account
+
+    @router.get("/donation")
+    def get_donation(user: User):
+        configured_url = os.getenv("DEVELOPER_DONATION_URL", "").strip()
+        safe_url = None
+        if configured_url:
+            try:
+                parsed = urlsplit(configured_url)
+                if (
+                    parsed.scheme == "https"
+                    and parsed.hostname
+                    and not parsed.username
+                    and not parsed.password
+                    and not any(char.isspace() for char in configured_url)
+                ):
+                    safe_url = configured_url
+            except ValueError:
+                pass
+        return {
+            "title": "개발자에게 후원하기",
+            "enabled": bool(safe_url),
+            "url": safe_url,
+        }
 
     @router.get("/profile")
     def get_profile(user: User):
