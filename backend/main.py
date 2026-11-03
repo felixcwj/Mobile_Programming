@@ -109,6 +109,11 @@ def current_user(
         raise HTTPException(401, "로그인 인증이 만료되었거나 올바르지 않습니다.")
 
 
+from mypage_routes import make_mypage_router
+
+app.include_router(make_mypage_router(db, current_user, nickname_key, firebase_password_login))
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "database": "firebase"}
