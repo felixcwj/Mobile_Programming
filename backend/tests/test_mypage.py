@@ -234,3 +234,48 @@ def test_login_id_change_rejects_taken_alias(context):
     response = client.put("/mypage/id", json={"new_id": "taken_id", "password": "old_password"})
     assert response.status_code == 409
     assert db.storage["users/alice"]["id"] == "alice"
+
+
+def test_preferences_save_and_retrieve(context):
+    client, db, _, _ = context
+    form = {
+        "gender": "female",
+        "birthday": "2004-12-28",
+        "mbti": "INTJ",
+        "activity_preference": "outdoor",
+        "alcohol_preference": 3,
+        "neighborhood": "서울 동작구",
+        "has_car": False,
+    }
+    result = client.put("/mypage/preferences", json=form)
+    assert result.status_code == 200, result.text
+    assert result.json()["preferences"] == form
+    assert client.get("/mypage/preferences").json()["preferences"] == form
+    partial = client.put("/mypage/preferences", json={"has_car": True})
+    assert partial.status_code == 200
+    assert partial.json()["preferences"]["has_car"] is True
+    assert partial.json()["preferences"]["mbti"] == "INTJ"
+    assert db.storage["users/alice"]["preferences"]["birthday"] == "2004-12-28"
+
+
+def test_preferences_validation_and_pending_deletion(context):
+    client, _, _, _ = context
+    assert client.put("/mypage/preferences", json={"alcohol_preference": 6}).status_code == 422
+    assert client.put("/mypage/preferences", json={"birthday": "2099-01-01"}).status_code == 422
+    assert client.put("/mypage/preferences", json={"gender": "invalid"}).status_code == 422
+    assert client.post("/mypage/deletion", json={"password": "old_password"}).status_code == 200
+    assert client.put("/mypage/preferences", json={"mbti": "ISTJ"}).status_code == 409
+
+
+def test_support_email_configuration(context, monkeypatch):
+    client, _, _, _ = context
+    monkeypatch.delenv("SUPPORT_EMAIL", raising=False)
+    assert client.get("/mypage/support").json() == {
+        "title": "고객센터", "enabled": False, "email": None,
+    }
+    monkeypatch.setenv("SUPPORT_EMAIL", "team@example.com")
+    assert client.get("/mypage/support").json() == {
+        "title": "고객센터", "enabled": True, "email": "team@example.com",
+    }
+    monkeypatch.setenv("SUPPORT_EMAIL", "bad-address")
+    assert client.get("/mypage/support").json()["enabled"] is False
