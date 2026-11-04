@@ -7,6 +7,8 @@ The MyPage API is implemented in `backend/mypage_routes.py` and registered in `b
 | Method | Path | Description |
 | --- | --- | --- |
 | PUT | `/mypage/id` | Change login ID without changing Firebase UID; requires current password |
+| GET / PUT | `/mypage/preferences` | Read or update MyPage basic personality/meeting preferences |
+| GET | `/mypage/support` | Return optional customer-support email address |
 | GET | `/mypage/donation` | Get the configured external donation URL and availability |
 | GET | `/mypage/profile` | Current user's profile |
 | PUT | `/mypage/profile` | Change nickname, name and phone number |
@@ -62,3 +64,11 @@ python backend/account_cleanup.py --service-account "$HOME/.config/mobile-progra
 For a future authorized deployment, schedule this script on a trusted host and supply environment-scoped credentials. Execution requires `--execute` and an `ALLOW_ACCOUNT_DELETION` variable exactly matching the selected Firebase project ID. Do not configure or run destructive mode until remaining data cleanup has been reviewed.
 
 No real Firebase writes or deletes were performed while developing this PR. This PR is intentionally draft and is not merged into main.
+
+## 2026-11-04 screen alignment
+
+The frontend screenshots define a separate **나의 기본 성향** page. The backend now stores these values in `users/{uid}.preferences` and exposes `GET/PUT /mypage/preferences`. Accepted fields: `gender` (`female/male/other/prefer_not_to_say`), `birthday` (ISO date), `mbti` (16 types or `unknown`), `activity_preference` (`outdoor/indoor/both`), `alcohol_preference` (1–5), `neighborhood` (up to 60 characters), `has_car` (boolean). The frontend must map the Korean labels to these wire values. Birthday is saved as an ISO date string. Partial PUT updates preserve fields not specified. This is optional preference data and is not assumed to be populated during signup.
+
+`GET /mypage/support` returns `{"title":"고객센터","enabled":false,"email":null}` until the team configures `SUPPORT_EMAIL` with a genuine team Gmail address. The Flutter client should open the device email composer using a `mailto:` link and **let the user review and send the email**; do not auto-send or store the message on the server. No placeholder email is configured.
+
+**Not implemented yet:** `내가 참여한 약속 전체 목록`, `약속 날짜 변경`, and `본인만 방 나가기`. They depend on the real room/participant schema owned by the home backend teammate. A regular event delete must **not** remove a shared room or another participant's event. In the meeting, confirm a stable room ID, membership data structure, the authoritative confirmed appointment timestamp, who can change the date, and whether leaving removes only the user's membership. Only then implement those endpoints on an integration branch. The sample calendar screenshots are visual references, not existing code.
