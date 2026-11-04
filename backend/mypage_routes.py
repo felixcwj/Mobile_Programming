@@ -125,7 +125,7 @@ def make_mypage_router(db, current_user, nickname_key, password_login):
     @router.get("/support")
     def get_support(user: User):
         address = os.getenv("SUPPORT_EMAIL", "").strip()
-        valid = bool(re.fullmatch(r"[^\\s@]+@[^\\s@]+\\.[^\\s@]+", address))
+        valid = bool(re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", address))
         return {
             "title": "고객센터",
             "enabled": valid,
