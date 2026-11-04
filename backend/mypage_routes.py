@@ -1,8 +1,8 @@
 import os
 import re
 from urllib.parse import urlsplit
-from datetime import datetime, timedelta, timezone
-from typing import Annotated
+from datetime import date, datetime, timedelta, timezone
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from firebase_admin import auth, firestore
@@ -45,6 +45,24 @@ class UsernameChange(BaseModel):
     password: str = Field(min_length=1)
 
 
+class PreferencesEdit(BaseModel):
+    gender: Literal["female", "male", "other", "prefer_not_to_say"] | None = None
+    birthday: date | None = None
+    mbti: Literal["ISTJ", "ISFJ", "INFJ", "INTJ", "ISTP", "ISFP", "INFP", "INTP", "ESTP", "ESFP", "ENFP", "ENTP", "ESTJ", "ESFJ", "ENFJ", "ENTJ", "unknown"] | None = None
+    activity_preference: Literal["outdoor", "indoor", "both"] | None = None
+    alcohol_preference: int | None = Field(default=None, ge=1, le=5)
+    neighborhood: str | None = Field(default=None, max_length=60)
+    has_car: bool | None = None
+
+    @model_validator(mode="after")
+    def check(self):
+        if self.birthday and self.birthday > date.today():
+            raise ValueError("생년월일은 미래 날짜일 수 없습니다.")
+        if self.neighborhood is not None:
+            self.neighborhood = self.neighborhood.strip()
+        return self
+
+
 def make_mypage_router(db, current_user, nickname_key, password_login):
     router = APIRouter(prefix="/mypage", tags=["mypage"])
     User = Annotated[dict, Depends(current_user)]
@@ -71,6 +89,48 @@ def make_mypage_router(db, current_user, nickname_key, password_login):
             raise HTTPException(403, "비밀번호 인증을 사용할 수 없는 계정입니다.")
         await password_login(account.email, password)
         return account
+
+    @router.get("/preferences")
+    def get_preferences(user: User):
+        data = profile(user["uid"])
+        return {"preferences": data.get("preferences") or {}}
+
+    @router.put("/preferences")
+    def edit_preferences(body: PreferencesEdit, user: User):
+        uid = user["uid"]
+        ref = profile_ref(uid)
+
+        @firestore.transactional
+        def save(transaction):
+            snapshot = ref.get(transaction=transaction)
+            if not snapshot.exists:
+                raise HTTPException(404, "프로필 정보를 찾을 수 없습니다.")
+            data = snapshot.to_dict() or {}
+            if data.get("deletion_requested_at"):
+                raise HTTPException(409, "탈퇴 신청을 취소한 후 수정하세요.")
+            preferences = dict(data.get("preferences") or {})
+            for field, value in body.model_dump(exclude_unset=True).items():
+                if isinstance(value, date):
+                    preferences[field] = value.isoformat()
+                else:
+                    preferences[field] = value
+            transaction.update(ref, {
+                "preferences": preferences,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
+            return preferences
+
+        return {"preferences": save(db.transaction())}
+
+    @router.get("/support")
+    def get_support(user: User):
+        address = os.getenv("SUPPORT_EMAIL", "").strip()
+        valid = bool(re.fullmatch(r"[^\\s@]+@[^\\s@]+\\.[^\\s@]+", address))
+        return {
+            "title": "고객센터",
+            "enabled": valid,
+            "email": address if valid else None,
+        }
 
     @router.get("/donation")
     def get_donation(user: User):
