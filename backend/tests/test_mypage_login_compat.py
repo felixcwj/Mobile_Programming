@@ -127,3 +127,43 @@ def test_ai_revision_changes_when_personal_preference_changes(app_module):
     before = module._conditions_revision(room, prefs, [], [{"activity_preference": "indoor"}])
     after = module._conditions_revision(room, prefs, [], [{"activity_preference": "outdoor"}])
     assert before != after
+
+
+def test_room_leave_only_removes_current_member(app_module):
+    module = app_module
+
+    class Ref:
+        def __init__(self, value=None):
+            self.value = value
+            self.deleted = False
+
+        def get(self, transaction=None):
+            return SimpleNamespace(exists=self.value is not None, to_dict=lambda: self.value)
+
+        def collection(self, name):
+            return SimpleNamespace(document=lambda uid: preference)
+
+    class Tx:
+        def update(self, ref, fields):
+            ref.value.update(fields)
+
+        def delete(self, ref):
+            ref.deleted = True
+
+    room = Ref({
+        "member_uids": ["alice", "bob"],
+        "owner_uid": "alice",
+        "invite_code": "ABCDEF12",
+    })
+    preference = Ref({"uid": "alice"})
+    module.db = SimpleNamespace(
+        collection=lambda name: SimpleNamespace(document=lambda key: invite)
+    )
+    invite = Ref({"room_id": "room1"})
+    deleted = module._leave_room_tx.__wrapped__(Tx(), room, "alice")
+    assert deleted is False
+    assert room.value["member_uids"] == ["bob"]
+    assert room.value["owner_uid"] == "bob"
+    assert room.deleted is False
+    assert invite.deleted is False
+    assert preference.deleted is True
