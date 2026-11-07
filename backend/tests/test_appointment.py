@@ -30,11 +30,17 @@ class Ref:
     def get(self, transaction=None):
         return Snap(self)
 
+    def normalized(self, values):
+        return {
+            key: datetime.now(timezone.utc) if value is appointment_routes.firestore.SERVER_TIMESTAMP else deepcopy(value)
+            for key, value in values.items()
+        }
+
     def set(self, values):
-        self.db.docs[self.path] = deepcopy(values)
+        self.db.docs[self.path] = self.normalized(values)
 
     def update(self, values):
-        self.db.docs[self.path].update(deepcopy(values))
+        self.db.docs[self.path].update(self.normalized(values))
 
 
 class Collection:
@@ -114,7 +120,7 @@ def test_confirm_then_calendar_and_history(setup_app):
     assert response.status_code == 200, response.text
     appointment = response.json()["appointment"]
     assert appointment["version"] == 1
-    assert appointment["starts_at"] == "2026-11-15T03:00:00Z"
+    assert appointment["starts_at"] == "2026-11-15T03:00:00+00:00"
     assert len(client.get("/calendar/confirmed-appointments").json()["events"]) == 1
     who["uid"] = "bob"
     assert client.get("/mypage/appointments").json()["count"] == 1
@@ -138,7 +144,7 @@ def test_date_change_updates_each_member_and_blocks_stale(setup_app):
     assert client.patch("/rooms/r1/appointment/date", json={"date": "2026-11-25", "version": 1}).status_code == 409
     who["uid"] = "bob"
     events = client.get("/calendar/confirmed-appointments").json()["events"]
-    assert events[0]["starts_at"] == "2026-11-20T03:00:00Z"
+    assert events[0]["starts_at"] == "2026-11-20T03:00:00+00:00"
 
 
 def test_confirmation_rejects_stale_recommendation(setup_app):
