@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
@@ -168,3 +169,132 @@ def test_room_leave_only_removes_current_member(app_module):
     assert room.deleted is False
     assert invite.deleted is False
     assert preference.deleted is True
+
+
+def test_existing_confirmed_room_is_added_for_joining_member(app_module):
+    module = app_module
+    now = datetime(2026, 11, 20, 3, 0, tzinfo=timezone.utc)
+
+    class Ref:
+        def __init__(self, db, path):
+            self.db = db
+            self.path = path
+            self.id = path.split("/")[-1]
+
+        def get(self, transaction=None):
+            data = self.db.docs.get(self.path)
+            return SimpleNamespace(exists=data is not None, to_dict=lambda: data)
+
+        def collection(self, name):
+            return Collection(self.db, self.path + "/" + name)
+
+    class Collection:
+        def __init__(self, db, path):
+            self.db = db
+            self.path = path
+
+        def document(self, name):
+            return Ref(self.db, self.path + "/" + name)
+
+    class DB:
+        def __init__(self):
+            self.docs = {
+                "room_invites/CODE": {"room_id": "r1"},
+                "rooms/r1": {
+                    "member_uids": ["alice"],
+                    "owner_uid": "alice",
+                    "invite_code": "CODE",
+                    "confirmed_appointment": {
+                        "date": "2026-11-20",
+                        "starts_at": now,
+                        "ends_at": now + timedelta(hours=2),
+                        "version": 1,
+                        "location": "서울",
+                    },
+                },
+            }
+
+        def collection(self, name):
+            return Collection(self, name)
+
+    class Tx:
+        def update(self, ref, values):
+            ref.db.docs[ref.path].update(values)
+
+        def set(self, ref, values):
+            ref.db.docs[ref.path] = values
+
+    db = DB()
+    module.db = db
+    room_id, joined = module._join_room_tx(Tx(), db.collection("room_invites").document("CODE"), "bob")
+    assert room_id == "r1"
+    assert joined is True
+    assert db.docs["rooms/r1"]["member_uids"] == ["alice", "bob"]
+    assert db.docs["users/bob/appointment_history/r1"]["status"] == "active"
+
+
+def test_leaving_confirmed_room_keeps_personal_history(app_module):
+    module = app_module
+    now = datetime(2026, 11, 20, 3, 0, tzinfo=timezone.utc)
+
+    class Ref:
+        def __init__(self, db, path):
+            self.db = db
+            self.path = path
+            self.id = path.split("/")[-1]
+
+        def get(self, transaction=None):
+            data = self.db.docs.get(self.path)
+            return SimpleNamespace(exists=data is not None, to_dict=lambda: data)
+
+        def collection(self, name):
+            return Collection(self.db, self.path + "/" + name)
+
+    class Collection:
+        def __init__(self, db, path):
+            self.db = db
+            self.path = path
+
+        def document(self, name):
+            return Ref(self.db, self.path + "/" + name)
+
+    class DB:
+        def __init__(self):
+            self.docs = {
+                "rooms/r1": {
+                    "member_uids": ["alice", "bob"],
+                    "owner_uid": "alice",
+                    "invite_code": "CODE",
+                    "confirmed_appointment": {
+                        "date": "2026-11-20",
+                        "starts_at": now,
+                        "ends_at": now + timedelta(hours=2),
+                        "version": 1,
+                        "location": "서울",
+                    },
+                },
+                "room_invites/CODE": {"room_id": "r1"},
+                "users/alice/appointment_history/r1": {"status": "active"},
+            }
+
+        def collection(self, name):
+            return Collection(self, name)
+
+    class Tx:
+        def update(self, ref, values):
+            ref.db.docs[ref.path].update(values)
+
+        def set(self, ref, values):
+            ref.db.docs[ref.path] = values
+
+        def delete(self, ref):
+            ref.db.docs.pop(ref.path, None)
+
+    db = DB()
+    module.db = db
+    left_last = module._leave_room_tx(Tx(), db.collection("rooms").document("r1"), "alice")
+    assert left_last is False
+    assert db.docs["rooms/r1"]["member_uids"] == ["bob"]
+    assert db.docs["rooms/r1"]["owner_uid"] == "bob"
+    assert db.docs["users/alice/appointment_history/r1"]["status"] == "left"
+    assert "room_invites/CODE" in db.docs
