@@ -45,6 +45,7 @@ def app_module(monkeypatch, tmp_path):
     monkeypatch.setattr(firebase_admin, "initialize_app", Mock())
     monkeypatch.setattr(firebase_admin.credentials, "Certificate", Mock())
     monkeypatch.setattr(firebase_admin.firestore, "client", lambda: FakeDB({}))
+    monkeypatch.setattr(firebase_admin.firestore, "transactional", lambda fn: fn)
     spec = importlib.util.spec_from_file_location("mypage_auth_compat_test", Path(__file__).parents[1] / "main.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -160,7 +161,7 @@ def test_room_leave_only_removes_current_member(app_module):
         collection=lambda name: SimpleNamespace(document=lambda key: invite)
     )
     invite = Ref({"room_id": "room1"})
-    deleted = module._leave_room_tx.__wrapped__(Tx(), room, "alice")
+    deleted = module._leave_room_tx(Tx(), room, "alice")
     assert deleted is False
     assert room.value["member_uids"] == ["bob"]
     assert room.value["owner_uid"] == "bob"
