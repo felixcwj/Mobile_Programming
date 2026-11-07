@@ -410,6 +410,21 @@ def _join_room_tx(tx, invite_ref, uid):
     if len(members) >= 30:
         raise HTTPException(409, "약속 방 최대 인원(30명)에 도달했습니다.")
     tx.update(room_ref, {"member_uids": members + [uid], "updated_at": datetime.now(timezone.utc)})
+    confirmed = (snap.to_dict() or {}).get("confirmed_appointment")
+    if confirmed:
+        history_ref = db.collection("users").document(uid).collection("appointment_history").document(room_id)
+        tx.set(history_ref, {
+            "room_id": room_id,
+            "title": (snap.to_dict() or {}).get("title") or "새 약속방",
+            "date": confirmed["date"],
+            "starts_at": confirmed["starts_at"],
+            "ends_at": confirmed["ends_at"],
+            "location": confirmed.get("location", ""),
+            "appointment_version": confirmed["version"],
+            "status": "active",
+            "uid": uid,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        })
     return room_id, True
 
 
