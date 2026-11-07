@@ -119,9 +119,11 @@ def current_user(
 
 from mypage_routes import make_mypage_router
 from calendar_routes import make_calendar_router
+from appointment_routes import make_appointment_router
 
 app.include_router(make_mypage_router(db, current_user, nickname_key, firebase_password_login))
 app.include_router(make_calendar_router(db, current_user))
+
 
 
 @app.get("/health")
@@ -498,6 +500,20 @@ def _leave_room_tx(tx, room_ref, uid):
         tx.delete(room_ref)
         tx.delete(invite_ref)
     tx.delete(pref_ref)
+    if data.get("confirmed_appointment"):
+        history_ref = db.collection("users").document(uid).collection("appointment_history").document(room_ref.id)
+        tx.set(history_ref, {
+            "room_id": room_ref.id,
+            "title": data.get("title") or "새 약속방",
+            "date": data["confirmed_appointment"]["date"],
+            "starts_at": data["confirmed_appointment"]["starts_at"],
+            "ends_at": data["confirmed_appointment"]["ends_at"],
+            "location": data["confirmed_appointment"].get("location", ""),
+            "appointment_version": data["confirmed_appointment"]["version"],
+            "status": "left",
+            "uid": uid,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        })
     return len(remaining) == 0
 
 
@@ -1184,3 +1200,5 @@ def list_room_decisions(
     decisions.sort(key=lambda d: d.get('created_at') or datetime.min.replace(tzinfo=timezone.utc),
                    reverse=True)
     return {'room_id': room_id, 'decisions': decisions}
+
+app.include_router(make_appointment_router(db, current_user, _collect_constraints))
