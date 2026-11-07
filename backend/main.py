@@ -991,6 +991,10 @@ def get_recommendation(room_id: str, user: Annotated[dict, Depends(current_user)
     try:
         current = _collect_constraints(room_id, user['uid'])
         result['is_stale'] = result.get('source_revision') != current['source_revision']
+        room = _member_room(room_id, user['uid']).to_dict() or {}
+        confirmed = room.get('confirmed_appointment') or {}
+        if confirmed.get('date') and confirmed['date'] != (result.get('plan') or {}).get('date'):
+            result['is_stale'] = True
     except HTTPException:
         result['is_stale'] = True
     return result
