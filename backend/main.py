@@ -66,10 +66,14 @@ def nickname_key(value: str) -> str:
 
 
 @firestore.transactional
-def store_profile_with_nickname(transaction, nickname_ref, profile_ref, profile_data):
+def store_profile_with_nickname(transaction, nickname_ref, profile_ref, profile_data, username_ref=None):
     if nickname_ref.get(transaction=transaction).exists:
         raise HTTPException(409, "이미 사용 중인 닉네임입니다.")
+    if username_ref is not None and username_ref.get(transaction=transaction).exists:
+        raise HTTPException(409, "이미 사용 중인 아이디입니다.")
     transaction.create(nickname_ref, {"uid": profile_ref.id, "nickname": profile_data["nickname"]})
+    if username_ref is not None:
+        transaction.create(username_ref, {"uid": profile_ref.id})
     transaction.set(profile_ref, profile_data)
 
 
@@ -113,6 +117,13 @@ def current_user(
         raise HTTPException(401, "로그인 인증이 만료되었거나 올바르지 않습니다.")
 
 
+from mypage_routes import make_mypage_router
+from calendar_routes import make_calendar_router
+
+app.include_router(make_mypage_router(db, current_user, nickname_key, firebase_password_login))
+app.include_router(make_calendar_router(db, current_user))
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "database": "firebase"}
@@ -125,7 +136,11 @@ def check_id(id: str = Query(min_length=4, max_length=12, pattern=r"^[A-Za-z0-9_
         auth.get_user(normalized)
         return {"id": normalized, "available": False}
     except auth.UserNotFoundError:
-        return {"id": normalized, "available": True}
+        try:
+            taken = db.collection("usernames").document(normalized).get().exists
+        except Exception:
+            raise HTTPException(503, "아이디 중복 확인에 실패했습니다.")
+        return {"id": normalized, "available": not taken}
     except Exception:
         raise HTTPException(503, "아이디 중복 확인에 실패했습니다.")
 
@@ -145,12 +160,16 @@ def check_nickname(nickname: str = Query(min_length=2, max_length=12)):
 def signup(body: SignupRequest):
     uid = normalized_id(body.id)
     try:
+        if db.collection("usernames").document(uid).get().exists:
+            raise HTTPException(409, "이미 사용 중인 아이디입니다.")
         account = auth.create_user(
             uid=uid,
             email=str(body.email),
             password=body.password,
             display_name=body.nickname,
         )
+    except HTTPException:
+        raise
     except auth.UidAlreadyExistsError:
         raise HTTPException(409, "이미 사용 중인 아이디입니다.")
     except auth.EmailAlreadyExistsError:
@@ -171,7 +190,7 @@ def signup(body: SignupRequest):
     }
     try:
         transaction = db.transaction()
-        store_profile_with_nickname(transaction, nickname_ref, profile_ref, profile_data)
+        store_profile_with_nickname(transaction, nickname_ref, profile_ref, profile_data, db.collection("usernames").document(account.uid))
     except Exception as exc:
         # If Firestore fails, clean up the newly created Authentication account.
         try:
@@ -189,13 +208,18 @@ def signup(body: SignupRequest):
 
 @app.post("/auth/login")
 async def login(body: LoginRequest):
+    requested_id = normalized_id(body.id)
     try:
-        account = auth.get_user(normalized_id(body.id))
+        mapped = db.collection("usernames").document(requested_id).get()
+        uid = (mapped.to_dict() or {}).get("uid") if mapped.exists else requested_id
+        account = auth.get_user(uid)
+        user_profile = db.collection("users").document(account.uid).get()
     except auth.UserNotFoundError:
         raise HTTPException(401, "아이디 또는 비밀번호가 일치하지 않습니다.")
     except Exception:
         raise HTTPException(503, "Firebase 계정 조회에 실패했습니다.")
-    if not account.email or account.disabled:
+    profile_data = user_profile.to_dict() if user_profile.exists else {}
+    if not account.email or account.disabled or normalized_id(profile_data.get("id") or account.uid) != requested_id:
         raise HTTPException(401, "아이디 또는 비밀번호가 일치하지 않습니다.")
     result = await firebase_password_login(account.email, body.password)
     return {
