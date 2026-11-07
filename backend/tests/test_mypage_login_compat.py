@@ -95,3 +95,35 @@ def test_username_availability_checks_mapping(app_module, monkeypatch):
     client = TestClient(module.app)
     assert client.get("/auth/check-id", params={"id": "claimed"}).json()["available"] is False
     assert client.get("/auth/check-id", params={"id": "unused"}).json()["available"] is True
+
+
+def test_all_backend_routes_survive_integration(app_module):
+    paths = app_module.app.openapi()["paths"]
+    required = {
+        "/auth/signup",
+        "/auth/login",
+        "/rooms",
+        "/rooms/{room_id}/members/me",
+        "/rooms/{room_id}/recommendation",
+        "/calendar/events",
+        "/calendar/sync/external",
+        "/mypage/profile",
+        "/mypage/preferences",
+        "/mypage/deletion",
+        "/mypage/support",
+        "/mypage/donation",
+    }
+    assert required.issubset(paths), required - set(paths)
+
+
+def test_ai_revision_changes_when_personal_preference_changes(app_module):
+    module = app_module
+    room = {"member_uids": ["alice"], "meeting_mode": "middle"}
+    prefs = [{
+        "uid": "alice", "budget": 30000, "region": "서울",
+        "available_date": "2026-11-15", "start_time": "12:00",
+        "end_time": "17:00", "activities": ["카페"],
+    }]
+    before = module._conditions_revision(room, prefs, [], [{"activity_preference": "indoor"}])
+    after = module._conditions_revision(room, prefs, [], [{"activity_preference": "outdoor"}])
+    assert before != after
