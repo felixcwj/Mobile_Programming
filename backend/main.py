@@ -657,14 +657,18 @@ def _collect_constraints(room_id: str, uid: str) -> dict:
     if not members:
         raise HTTPException(409, '참여자가 없는 방입니다.')
     prefs = [entries[member] for member in members]
+    # Once a shared appointment is confirmed, its approved date takes precedence
+    # over the original availability answers. Never rewrite members' answers.
+    confirmed = room.get('confirmed_appointment') or {}
+    confirmed_date = confirmed.get('date')
     dates = {pref.get('available_date') for pref in prefs}
-    if len(dates) != 1 or None in dates:
+    if not confirmed_date and (len(dates) != 1 or None in dates):
         raise HTTPException(409, '참여자의 가능한 날짜가 서로 다릅니다.')
     try:
         start = max(clock_time.fromisoformat(pref['start_time']) for pref in prefs)
         end = min(clock_time.fromisoformat(pref['end_time']) for pref in prefs)
         budget = min(int(pref['budget']) for pref in prefs)
-        selected_date = date.fromisoformat(next(iter(dates)))
+        selected_date = date.fromisoformat(str(confirmed_date or next(iter(dates))))
     except (ValueError, KeyError, TypeError):
         raise HTTPException(409, '저장된 약속 조건 형식에 오류가 있습니다.')
     if start >= end:
@@ -724,6 +728,7 @@ def _conditions_revision(room: dict, prefs: list[dict], shared_decisions: list[d
         'shared_decisions': shared_decisions or [],
         'member_personalization': personalization or [],
         'appointment_additional_notes': (room.get('confirmed_appointment') or {}).get('additional_notes', ''),
+        'confirmed_date': (room.get('confirmed_appointment') or {}).get('date'),
         'prefs': sorted([
             {k: p.get(k) for k in ('uid', 'budget', 'region', 'departure_location',
                                    'available_date', 'start_time', 'end_time', 'activities', 'additional_notes')}
@@ -1250,4 +1255,4 @@ def list_room_decisions(
                    reverse=True)
     return {'room_id': room_id, 'decisions': decisions}
 
-app.include_router(make_appointment_router(db, current_user, _collect_constraints))
+app.include_router(make_appointment_router(db, current_user, _collect_constraints, _regenerate_room))
