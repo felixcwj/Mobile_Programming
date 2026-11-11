@@ -274,3 +274,42 @@ TextFormField(
 - 방장에게는 **즉시 반영** UI를, 일반 참여자에게는 **전원 동의 요청** UI를 표시하세요. 일반 참여자에게는 API 호출 후 `proposal_created`가 반환되므로 변경을 즉시 완료했다고 표시하면 안 됩니다.
 - `/rooms/{room_id}/decisions`와 `/rooms/{room_id}/appointment/date-requests`에서 투표 상태를 조회하고, 모든 구성원의 찬성을 받은 뒤에만 반영 결과를 새로 조회하세요.
 - 초대 코드 입력은 `#`, `@`, `!`를 모두 허용하는 일반 텍스트 입력으로 구현하고 URL path segment에 붙이지 마세요. 초대 코드는 `POST /rooms/join` JSON 본문으로 제출합니다.
+
+## 8. 캘린더 추가 연동 (2026-11-11)
+
+**개인 일정과 약속 방 일정은 서로 다른 저장소입니다.**
+
+- 개인 일정은 기존 `/calendar/events`의 사용자별 데이터에 저장됩니다. 다른 참가자에게 공유되지 않습니다.
+- 홈에서 약속 방을 생성한 **직후**에는 날짜가 없습니다. 약속 방에서 날짜·시각을 선택하면 `PUT /rooms/{room_id}/schedule`로 저장하세요. AI 추천 확정 전에도 현재 방 구성원 모두의 캘린더에 표시됩니다.
+- `PUT /rooms/{room_id}/schedule` 요청 예: `{"starts_at":"2026-11-15T13:00:00+09:00","version":0}`. 처음 저장은 `version: 0`, 변경은 `GET /rooms/{room_id}/schedule`에서 받아온 최신 `version`을 사용합니다. 일정 제거는 `starts_at: null`로 전송합니다. 임시 일정 수정은 방장만 할 수 있습니다.
+- `GET /rooms/{room_id}/schedule`: 방 참가자만 현재 방 일정 조회. `schedule: null`이면 날짜 미정입니다.
+- `GET /calendar/room-appointments`: 현재 사용자가 참여한 모든 방 중 날짜가 설정된 약속 반환. `events[].status`가 `scheduled`(날짜만 설정), `confirmed`(AI 추천 확정) 중 하나입니다. `starts_at`은 필수, `ends_at`은 임시 약속에서 `null`입니다. 시간 길이를 임의로 추측하지 마세요. 방 탈퇴 시 해당 사용자의 목록에서만 사라집니다.
+- 이미 AI 추천을 확정한 방은 `PUT /rooms/{room_id}/schedule` 수정이 막힙니다(409). 확정된 약속 날짜는 기존 `PATCH /rooms/{room_id}/appointment/date`와 동의/투표 기능을 사용하세요. `/calendar/room-appointments`는 확정 약속의 날짜를 우선 사용하여 **방 하나가 중복 표시되지 않습니다**.
+- **현재 추천되지 않는 중복 호출:** 기존 `GET /calendar/confirmed-appointments`도 존재합니다. 화면 캘린더에서는 `GET /calendar/room-appointments`를 사용하고 두 결과를 합치지 마세요. 동일한 확정 약속이 중복될 수 있습니다.
+
+**캘린더 화면 통합:** 개인 일정은 `GET /calendar/events`(기간 필수)와 `GET /calendar/recurring-events`(반복 일정 원본 목록)를 불러오고, 공유 약속은 `GET /calendar/room-appointments`에서 불러와 함께 표시합니다. `/calendar/recurring-events`는 **발생 날짜를 전개한 결과가 아닌 원본 반복 규칙**을 반환하므로 Flutter의 `CalendarEvent.entriesOn` 로직을 사용하여 표시 월의 발생일로 펼쳐야 합니다. `GET /calendar/events`는 시작일이 조회 기간 안에 있는 원본만 조회하므로 반복 일정 전체를 가져오는 용도로 쓰면 안 됩니다. 원본 ID가 중복되면 하나로 합치세요.
+
+개인 일정 요청 본문에 다음 선택 항목이 추가되었습니다. 기존 클라이언트가 생략하면 기본값이 적용됩니다.
+
+```json
+{
+  "title": "매주 수업",
+  "starts_at": "2026-11-16T15:00:00+09:00",
+  "ends_at": "2026-11-16T16:00:00+09:00",
+  "memo": "",
+  "location": "학교",
+  "all_day": false,
+  "repeat": "weekly",
+  "category": "school",
+  "reminder_minutes": 30
+}
+```
+
+- `repeat`: `none`, `daily`, `weekly`, `monthly`, `yearly` (기본 `none`)
+- `category`: `personal`, `school`, `work` (기본 `personal`). 약속 방 범주는 이 개인 일정 API를 사용하지 않습니다.
+- `reminder_minutes`: 0 이상의 정수 또는 `null`. **알림 설정값만 저장하며 푸시·OS 알림 자동 예약은 하지 않습니다.**
+- 반복 일정 전체 수정·삭제: 기존 `PUT/DELETE /calendar/events/{event_id}`에 원본 ID와 최신 `version`을 전달. 특정 주차만 예외적으로 수정/삭제하는 기능은 없습니다.
+- 현재 API가 돌려주는 반복 일정 목록 최대 500건, 공유 약속 목록은 현재 참가 중인 방 조회입니다. 대규모 데이터용 페이지네이션은 아직 추가되지 않았습니다.
+
+**남은 검증:** 실제 Firebase에서 Firestore 반복 일정 조회 쿼리와 인덱스 상태 확인, Flutter 실기기 연동, 동시 변경 시 화면 재조회 처리.
+
