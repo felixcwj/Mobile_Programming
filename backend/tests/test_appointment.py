@@ -295,6 +295,8 @@ def test_room_schedule_conflict_and_clearing(setup_app):
     deleted = client.put("/rooms/r1/schedule", json={"starts_at": None, "version": 1})
     assert deleted.status_code == 200, deleted.text
     assert client.get("/calendar/room-appointments").json()["events"] == []
+    assert client.get("/rooms/r1/schedule").json()["schedule"]["version"] == 2
+    assert client.put("/rooms/r1/schedule", json={"starts_at": "2026-11-18T13:00:00+09:00", "version": 1}).status_code == 409
 
 
 def test_confirmed_room_appears_once_and_leaving_removes_calendar_event(setup_app):
@@ -311,3 +313,14 @@ def test_confirmed_room_appears_once_and_leaving_removes_calendar_event(setup_ap
     db.docs["rooms/r1"]["member_uids"].remove("bob")
     assert client.get("/calendar/room-appointments").json()["count"] == 0
     assert client.get("/mypage/appointments").json()["count"] == 1
+
+
+def test_confirmed_room_date_change_updates_member_calendar(setup_app):
+    client, db, who = setup_app
+    assert client.post("/rooms/r1/appointment/confirm", json={"recommendation_revision": "revision1"}).status_code == 200
+    changed = client.patch("/rooms/r1/appointment/date", json={"date": "2026-11-20", "version": 1})
+    assert changed.status_code == 200
+    who["uid"] = "bob"
+    current = client.get("/calendar/room-appointments").json()["events"]
+    assert current[0]["starts_at"] == "2026-11-20T03:00:00+00:00"
+    assert current[0]["version"] == 2
