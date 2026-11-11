@@ -91,6 +91,8 @@ class Query:
 
     @staticmethod
     def matches(value, operator, target):
+        if operator == "in":
+            return value in target
         if operator == "==":
             return value == target
         if operator == ">=":
@@ -319,3 +321,36 @@ def test_meeting_events_cannot_be_edited_through_personal_api(setup_calendar):
     }
     assert client.put("/calendar/events/room_event", json={**payload(), "version": 1}).status_code == 403
     assert client.delete("/calendar/events/room_event", params={"version": 1}).status_code == 403
+
+
+def test_recurring_event_templates_are_private_and_persist_options(setup_calendar):
+    client, db = setup_calendar
+    weekly = client.post("/calendar/events", json={
+        **payload(), "repeat": "weekly", "category": "school", "reminder_minutes": 30,
+    })
+    assert weekly.status_code == 201, weekly.text
+    event_id = weekly.json()["id"]
+    assert weekly.json()["repeat"] == "weekly"
+    assert weekly.json()["category"] == "school"
+    assert weekly.json()["reminder_minutes"] == 30
+    db.data["users/beta/calendar_events/private"] = {
+        **db.data[f"users/alpha/calendar_events/{event_id}"], "repeat": "daily"
+    }
+    results = client.get("/calendar/recurring-events")
+    assert results.status_code == 200, results.text
+    assert [item["id"] for item in results.json()["events"]] == [event_id]
+    updated = client.put(f"/calendar/events/{event_id}", json={
+        **payload(), "title": "Recurring meeting", "repeat": "monthly",
+        "category": "work", "reminder_minutes": None, "version": 1,
+    })
+    assert updated.status_code == 200
+    assert updated.json()["repeat"] == "monthly"
+    assert updated.json()["version"] == 2
+    assert client.delete(f"/calendar/events/{event_id}", params={"version": 2}).status_code == 200
+    assert client.get("/calendar/recurring-events").json()["events"] == []
+
+
+def test_invalid_recurrence_and_reminder_rejected(setup_calendar):
+    client, _ = setup_calendar
+    assert client.post("/calendar/events", json={**payload(), "repeat": "every_minute"}).status_code == 422
+    assert client.post("/calendar/events", json={**payload(), "reminder_minutes": -1}).status_code == 422
