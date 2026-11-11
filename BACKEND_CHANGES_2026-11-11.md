@@ -1,42 +1,37 @@
-# Plan It 백엔드 개선 내용 (2026-11-11)
+# Plan It 백엔드 코드 점검 및 수정 (2026-11-11)
 
-기존 `feature/backend-integration`을 기반으로 합니다. 공식 GitHub 원격 저장소에는 **아직 Push하지 않았습니다.**
+이 ZIP은 기존 `feature/backend-integration`을 기준으로 **수정하거나 추가한 백엔드 파일만** 담습니다. 원격 저장소에는 Push하지 않았습니다.
 
-## 변경 사항
+## 이번 점검 및 수정
 
-1. 새 방 초대 코드 8자리 → **7자리**. 기존 8자리 코드로 참여하는 기능은 유지.
-2. 방 생성 시 `max_members`를 Firestore에 저장하고, 입장 시 **방별 정원(최대 8명)**을 검사. 기존 방에 정원이 없으면 8명으로 간주.
-3. `GET /rooms/{room_id}/appointment/date-availability?date=YYYY-MM-DD` 추가: `available` / `different_date` / `missing`을 반환.
-4. `PATCH /rooms/{room_id}/appointment/date?require_all_available=true` 선택적 제한 추가. 저장된 가능 날짜가 모두 일치하지 않으면 409. 기본값은 이전 동작과 호환.
-5. 날짜를 실제로 바꾸지 않는 요청은 추천을 재생성해야 한다는 신호를 반환하지 않도록 수정.
-6. 백엔드 API 문서 갱신 및 예시 API 키를 placeholder로 대체.
+1. `POST /rooms/join`의 8자리 레거시 입력 허용 제거: **정확히 7자리**만 허용. 신규 생성은 영문·숫자·`#@!` 중 각 유형이 최소 하나 포함됩니다.
+2. 기존 8자리 초대 코드의 안전한 전환을 위한 `backend/migrate_invite_codes.py` 추가. **실제 Firebase 데이터는 건드리지 않았습니다.** 운영 담당자가 드라이런 결과를 확인한 뒤 별도로 실행해야 합니다.
+3. 채팅: `main.py` 및 API 라우터에 `/rooms/{room_id}/messages`가 없는 것을 확인. 과거 Firestore 채팅 문서는 자동으로 삭제되지 않습니다.
+4. 방장 즉시 수정, 참여자 전원 동의 후 수정: 개인 조건·활동·만남 지역·확정된 약속 날짜 API 처리와 승인/거절 흐름 확인.
+5. 개인/약속 기타 입력: `additional_notes`가 AI 추천 제약 및 소스 변경 감지에 포함되는 것을 확인.
+6. **같은 방의 여러 약속 이력 누적**: 별도 `appointment_id`별 기록을 작성하고, 최신 기록 경로는 이전 클라이언트 호환용으로 유지. 약속 날짜를 변경해도 이전 약속은 덮어쓰지 않음. 기존 구형 확정 약속도 다음 확정 시 보존 처리.
+7. 라우트 문서와 자동 테스트 보강.
 
-## 검증
+## 검증 범위
 
-- Python 문법 검사(`compileall`) 통과.
-- Firebase Admin이 현 실행 환경에 설치되지 않아 **Firebase/외부 서비스 실제 호출 테스트는 미수행**.
-- Firebase를 모의 객체로 대체한 단위/라우트 테스트 **60개 통과** (`backend/tests/`).
+- 문법 검사 `python -m compileall` 통과.
+- Firebase Admin/Google SDK를 테스트용 가짜 모듈로 대체한 환경에서 **73개 백엔드 테스트 통과**. 여기에는 복수 약속 이력, 구형 기록 보존, 초대 코드 길이 검사가 포함됩니다.
+- **실제 Firebase, OpenRouter, 카카오 호출 및 기기 캘린더 동기화 검증은 수행하지 않았습니다.** 실제 SDK/자격 증명/기기 없이 정상 동작을 보장할 수 없습니다.
 
-## 실행 및 GitHub 반영
+## 운영 단계에서 남은 작업
 
-1. 기존 폴더를 백업해 두고 수정본의 `backend/` 하위 파일을 로컬 Git 작업 폴더에 복사.
-2. `cd backend && python -m pip install -r requirements.txt`.
-3. `.env`와 Firebase 서비스 계정을 본인 환경에 맞게 설정. `.env.example`은 예시일 뿐 실제 키를 포함하지 않음.
-4. `python -m uvicorn main:app --reload` 및 `/docs` 확인.
-5. Git 작업 폴더에서 `git status`로 변경사항을 확인하고 `git add -A backend/ && git commit -m "Fix room limits and date availability" && git push -u origin HEAD`.
+- Firestore에 남아 있는 8자리 코드 방에 대해 **드라이런 후 초대 코드 마이그레이션 실제 실행**. 이전 코드의 외부 공유는 무효화됨.
+- 테스트용 Firebase 프로젝트에서 방 생성→참가→전원 투표→AI 코스→복수 약속 확정→캘린더 동기화 시나리오를 실측.
+- `account_cleanup.py` 30일 경과 계정 삭제 작업의 실제 스케줄러 등록, 권한/로그/실패 알림 설정. 코드만 있고 운영 스케줄은 설정되지 않음.
+- 계정 삭제 시 방 참가자/기타 Firestore 참조 데이터의 개인정보 처리 정책 검토.
 
-## 남은 작업
+## 로컬 적용 후 테스트
 
-- 전체 동의/투표 규칙의 팀 확정 및 구현
-- 같은 방의 여러 약속 이력 누적 구조
-- 기기 캘린더 동기화 및 실기기 Firebase/OpenRouter/카카오 연동 검증
-- 탈퇴 후 자동 삭제 작업의 운영 스케줄 설정
+```bash
+cd ~/Desktop/mobileprogram_backend
+unzip -o ~/Downloads/planit_backend_audited_2026-11-11.zip -d .
+cd backend
+python -m pytest -q tests/
+```
 
-## 후속 변경: 권한·기타 사항·특수문자 코드
-- 신규 초대 코드: 영문 대문자 + 숫자 + `#@!` 특수문자 포함 정확히 7글자. 이전 영숫자 코드의 기존 방 참여는 유지.
-- `backend/main.py`에서 채팅 라우트 제거.
-- 개인 선호 추가 입력 필드: `additional_notes`(최대 1000자). AI 추천 제약과 revision hash에 포함.
-- 방장의 기존 개인 조건 수정/활동·만남 지역 결정: 즉시 반영. 일반 참가자의 기존 조건 수정/활동·만남 지역 변경: `shared_decisions`에 제안 등록 후 전원 동의로 반영, 거절 시 미적용.
-- 확정 약속 날짜 및 기타 사항 변경: 방장은 즉시 반영, 일반 참가자는 `date_change_requests`에 대기 상태로 생성. `GET /rooms/{room_id}/appointment/date-requests` 조회, `POST /rooms/{room_id}/appointment/date-requests/{request_id}/vote`로 찬반 투표. 전원 찬성 시 원자적으로 약속/참가자 이력 갱신. 수정 후 AI 재추천 필요.
-- 동의 완료는 즉시 모델 재추천을 *시도*하지만 외부 API 연결/장소 검색에 실패하면 `recommendation_status`에 실패 또는 대기를 반환할 수 있음.
-- 주의: 현재 저장된 첫 선호는 즉시 입력 가능, 일반 참가자의 **재수정부터** 전원 동의를 받음. Firestore 기보유 채팅 데이터는 삭제하지 않음.
+**`.env`, `serviceAccountKey.json`, `.venv`는 ZIP에 포함하지 않았습니다.** GitHub Commit 전에 `git diff --cached --name-only`에서 비밀 파일이 포함되지 않았는지 다시 확인하세요.

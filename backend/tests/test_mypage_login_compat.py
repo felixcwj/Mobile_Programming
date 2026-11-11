@@ -363,9 +363,9 @@ def test_join_respects_each_rooms_capacity_and_legacy_default(app_module):
 
 def test_join_accepts_requested_special_characters_and_rejects_old_symbols(app_module):
     model = app_module.JoinRoomRequest
-    for code in ("A1#BCDE", "A1@BCDE", "A1!BCDE", "A1BCDEF", "ABCDEFG8"):
+    for code in ("A1#BCDE", "A1@BCDE", "A1!BCDE", "A1BCDEF", "ABCDEFG"):
         assert model(invite_code=code).invite_code == code
-    for code in ("A1-BCDE", "A1_BCDE", "AB#CDE", "AB#CDEFG"):
+    for code in ("A1-BCDE", "A1_BCDE", "AB#CDE", "AB#CDEFG", "ABCDEFG8"):
         with pytest.raises(Exception):
             model(invite_code=code)
 

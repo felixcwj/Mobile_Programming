@@ -105,7 +105,7 @@ Content-Type: application/json
 | 방 만들기 | POST `/rooms` | `{"title":"주말 약속","max_members":3}` → `room_id`, **7자리** `invite_code` |
 | 내 방 목록 | GET `/rooms` | `rooms`, `count` |
 | 방 상세 | GET `/rooms/{room_id}` | `member_uids`, `owner_uid`, `members`, `max_members`, `member_count` |
-| 초대코드로 참여 | POST `/rooms/join` | `{"invite_code":"AB2#C@!"}` (신규: 영문·숫자·`#@!` 포함 7자리; 이전 영숫자 7~8자리 호환) |
+| 초대코드로 참여 | POST `/rooms/join` | `{"invite_code":"AB2#C@!"}` (영문·숫자·`#@!` 중 허용 문자로 구성된 정확히 7자리; 8자리 거부) |
 | 내가 입력한 약속 조건 저장 | POST `/rooms/{room_id}/preferences` | 아래 예시 |
 | 참가자별 조건 조회 | GET `/rooms/{room_id}/preferences` | `members`, `submitted_count`, `total_members` |
 | 만남 위치 방식 변경 | PATCH `/rooms/{room_id}/meeting` | `{"mode":"middle"}` 또는 `{"mode":"fixed","region":"강남역"}`; 방장 즉시 변경, 일반 참여자 전원 동의 제안 |
@@ -189,7 +189,7 @@ Content-Type: application/json
 
 - **캘린더 화면은 두 API를 함께 조회**해야 합니다. `/calendar/events`는 개인/외부 캘린더에서 동기화된 일정 목록, `/calendar/confirmed-appointments`는 참여 중인 확정 약속 목록입니다. 두 데이터를 화면에서 합쳐 보여주세요.
 - `starts_from`과 `starts_before`에는 **시간대가 포함된 ISO 8601** 날짜·시간이 필수입니다. `+`는 URL에서 `%2B`로 인코딩하세요. 최대 조회 범위는 약 1년입니다.
-- 확정 약속의 `id`는 `meeting:<room_id>` 형식입니다. **이 ID를 개인 일정 수정/삭제 API에 넣지 마세요.** 확정 약속의 날짜 변경은 `PATCH /rooms/{room_id}/appointment/date`, 나가기는 `DELETE /rooms/{room_id}/members/me`를 사용해야 다른 사람의 약속이 삭제되지 않습니다.
+- 확정 약속의 `id`는 일반적으로 `meeting:<room_id>__<appointment_id>` 형식입니다(이전 기록은 `meeting:<room_id>`일 수 있음). **이 ID를 개인 일정 수정/삭제 API에 넣지 마세요.** 확정 약속의 날짜 변경은 `PATCH /rooms/{room_id}/appointment/date`, 나가기는 `DELETE /rooms/{room_id}/members/me`를 사용해야 다른 사람의 약속이 삭제되지 않습니다.
 - `version`은 수정 충돌 방지용 숫자입니다. 서버에서 받은 최신 버전을 그대로 보내세요. 이전 버전이면 HTTP 409가 발생하며, 화면에서 다시 조회하도록 안내합니다.
 - 날짜를 변경하기 전에 `GET /rooms/{room_id}/appointment/date-availability?date=YYYY-MM-DD`를 호출하세요. 각 참가자는 `status`가 `available`(저장된 가능 날짜 일치), `different_date`(다른 날짜 선택), `missing`(미입력) 중 하나로 반환됩니다. `all_available`이 `false`이면 프론트엔드에서 변경 전 경고할 수 있습니다.
 - 날짜 변경 요청에 `?require_all_available=true`를 붙이면 **모든 참가자의 저장된 가능 날짜가 일치하는 경우에만** 변경됩니다. 불일치/미입력 시 HTTP 409와 `detail.availability`를 반환합니다. 옵션을 생략하면 이전 API처럼 방장이 변경할 수 있으며, 응답의 `availability.requires_member_confirmation`으로 경고를 표시하세요.
@@ -243,8 +243,8 @@ FastAPI는 대체로 JSON을 반환하며, 실패 시 `{"detail":"오류 내용"
 
 - 서버 Base URL/실행 및 배포 환경
 - **추천 확정**은 방장만 가능. **조건/날짜 수정**은 방장 즉시 반영, 일반 참여자 전원 동의 필요. 투표 이후 Flutter 화면이 목록을 다시 조회해야 합니다.
-- 과거 약속 보관 방식: 현재 **방 하나당 최신 확정 약속 한 건** 기록, 같은 방에서 여러 번 약속 시 추가 설계 필요
-- 일반 참여자 날짜 변경 요청에 대한 **명시적 전원 동의/거절** 구현. 단, 날짜가 변경되어도 AI 코스 자동 재생성은 미구현이며 `recommendation_needs_refresh: true`를 확인하고 새 코스를 요청해야 합니다.
+- 과거 약속 보관 방식: 같은 방의 여러 약속을 `appointment_id`별로 누적 저장하며, 구 버전 최신 기록은 호환성 별칭으로 유지
+- 일반 참여자 날짜 변경 요청에 대한 **명시적 전원 동의/거절**은 구현됨. 단, 날짜가 변경되어도 AI 코스 자동 재생성은 미구현이며 `recommendation_needs_refresh: true`를 확인하고 새 코스를 요청해야 합니다.
 - 프로필 사진, 자기소개, 상세주소의 저장 API와 실제 스토리지
 - 팀 Gmail 주소 `SUPPORT_EMAIL`, 후원 URL `DEVELOPER_DONATION_URL` 설정
 - 외부 캘린더 실기기 연동, Firebase 실환경 및 AI·카카오 외부 호출 검증
@@ -274,3 +274,7 @@ TextFormField(
 - 방장에게는 **즉시 반영** UI를, 일반 참여자에게는 **전원 동의 요청** UI를 표시하세요. 일반 참여자에게는 API 호출 후 `proposal_created`가 반환되므로 변경을 즉시 완료했다고 표시하면 안 됩니다.
 - `/rooms/{room_id}/decisions`와 `/rooms/{room_id}/appointment/date-requests`에서 투표 상태를 조회하고, 모든 구성원의 찬성을 받은 뒤에만 반영 결과를 새로 조회하세요.
 - 초대 코드 입력은 `#`, `@`, `!`를 모두 허용하는 일반 텍스트 입력으로 구현하고 URL path segment에 붙이지 마세요. 초대 코드는 `POST /rooms/join` JSON 본문으로 제출합니다.
+
+### 7자리 초대 코드 전환 주의
+- 초대 코드가 8자리인 기존 Firestore 방은 **자동 변경되지 않습니다**. 운영 담당자는 `migrate_invite_codes.py`로 기존 코드 교체 후 참가자에게 새 코드를 알려야 합니다. 8자리 참여 요청은 HTTP 422입니다.
+- 서버에서 반환하는 `invite_code`는 URL 매개변수로 넣지 말고 `POST /rooms/join` JSON 본문으로 전달하세요. `#`는 URL에서는 fragment 경계 문자입니다.

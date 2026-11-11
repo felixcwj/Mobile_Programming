@@ -258,3 +258,66 @@ def test_owner_can_change_appointment_notes_immediately(setup_app):
     assert revised.json()['appointment']['version'] == 2
     assert revised.json()['appointment']['additional_notes'] == '식당은 매운 음식 제외'
     assert revised.json()['recommendation_needs_refresh'] is True
+
+
+def test_multiple_appointments_in_same_room_are_preserved(setup_app):
+    client, db, who = setup_app
+    first = client.post('/rooms/r1/appointment/confirm', json={'recommendation_revision': 'revision1'})
+    assert first.status_code == 200, first.text
+    first_id = first.json()['appointment']['appointment_id']
+    assert first_id
+
+    # Simulate a newly generated course for a later meetup in the same room.
+    db.docs['rooms/r1/recommendations/latest']['plan']['date'] = '2026-12-20'
+    second = client.post('/rooms/r1/appointment/confirm', json={'recommendation_revision': 'revision1', 'version': 1})
+    assert second.status_code == 200, second.text
+    second_id = second.json()['appointment']['appointment_id']
+    assert second_id != first_id
+    assert second.json()['appointment']['version'] == 2
+    assert db.docs[f'users/alice/appointment_history/r1__{first_id}']['date'] == '2026-11-15'
+    assert db.docs[f'users/alice/appointment_history/r1__{second_id}']['date'] == '2026-12-20'
+
+    who['uid'] = 'bob'
+    history = client.get('/mypage/appointments')
+    assert history.status_code == 200, history.text
+    assert history.json()['count'] == 2
+    assert {entry['appointment_id'] for entry in history.json()['appointments']} == {first_id, second_id}
+    cal = client.get('/calendar/confirmed-appointments')
+    assert len(cal.json()['events']) == 2
+    assert len({event['id'] for event in cal.json()['events']}) == 2
+
+    who['uid'] = 'alice'
+    changed = client.patch('/rooms/r1/appointment/date', json={'date': '2026-12-21', 'version': 2})
+    assert changed.status_code == 200
+    assert db.docs[f'users/alice/appointment_history/r1__{first_id}']['date'] == '2026-11-15'
+    assert db.docs[f'users/alice/appointment_history/r1__{second_id}']['date'] == '2026-12-21'
+
+
+def test_legacy_appointment_is_preserved_on_reconfirmation(setup_app):
+    client, db, who = setup_app
+    first = client.post('/rooms/r1/appointment/confirm', json={'recommendation_revision': 'revision1'})
+    assert first.status_code == 200
+    # Simulate a room created before immutable appointment IDs existed.
+    old_id = db.docs['rooms/r1']['confirmed_appointment'].pop('appointment_id')
+    del db.docs[f'users/alice/appointment_history/r1__{old_id}']
+    del db.docs[f'users/bob/appointment_history/r1__{old_id}']
+    db.docs['users/alice/appointment_history/r1'].pop('appointment_id')
+    db.docs['users/bob/appointment_history/r1'].pop('appointment_id')
+    db.docs['rooms/r1/recommendations/latest']['plan']['date'] = '2026-12-01'
+    second = client.post('/rooms/r1/appointment/confirm', json={'recommendation_revision': 'revision1', 'version': 1})
+    assert second.status_code == 200, second.text
+    assert db.docs['users/alice/appointment_history/r1__legacy-r1']['date'] == '2026-11-15'
+    assert client.get('/mypage/appointments').json()['count'] == 2
+
+
+def test_room_exit_status_hides_all_events_without_destroying_history(setup_app):
+    client, db, who = setup_app
+    first = client.post('/rooms/r1/appointment/confirm', json={'recommendation_revision': 'revision1'})
+    assert first.status_code == 200
+    db.docs['rooms/r1/recommendations/latest']['plan']['date'] = '2026-12-01'
+    assert client.post('/rooms/r1/appointment/confirm', json={'recommendation_revision': 'revision1', 'version': 1}).status_code == 200
+    db.docs['users/alice/appointment_history/r1']['status'] = 'left'
+    assert client.get('/calendar/confirmed-appointments').json()['events'] == []
+    entries = client.get('/mypage/appointments').json()['appointments']
+    assert len(entries) == 2
+    assert all(e['status'] == 'left' for e in entries)
