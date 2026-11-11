@@ -313,3 +313,19 @@ TextFormField(
 
 **남은 검증:** 실제 Firebase에서 Firestore 반복 일정 조회 쿼리와 인덱스 상태 확인, Flutter 실기기 연동, 동시 변경 시 화면 재조회 처리.
 
+## 9. 확정된 약속 날짜 변경 후 AI 재추천 (2026-11-11)
+
+방장 즉시 변경과 일반 참가자의 전원 동의 후 변경이 **최종 적용될 때**, 서버가 변경된 공유 날짜를 AI 추천 조건의 기준으로 사용합니다. 기존 참가자별 `preferences.available_date`는 덮어쓰지 않습니다.
+
+- 기존 최종 확정 전: 참가자들의 가능 날짜가 일치하지 않으면 추천 생성은 409를 반환합니다.
+- 최종 확정 후: `confirmed_appointment.date`가 AI 추천의 기준 날짜입니다. 각 참가자의 출발지·예산·활동·시간대는 기존 입력을 계속 참고합니다.
+- 날짜 변경이 성공하면 변경된 날짜에 대한 AI 코스 재추천을 **즉시 시도**합니다. 방장 PATCH 및 일반 참가자 전원 찬성 POST 응답의 `recommendation_status`를 확인하세요.
+  - `updated`: `recommendation`에 새 날짜로 재생성된 추천 포함
+  - `pending`: 조건 또는 공통 가능 시간 등의 충돌로 아직 추천을 생성할 수 없음
+  - `failed`: 외부 AI·장소 검색 서비스 호출 문제 등으로 추천 실패. **날짜 변경은 이미 저장됨**
+  - `unchanged`: 실제 날짜·기타 사항이 바뀌지 않아 재추천 생략
+  - `awaiting_votes`: 일반 참가자의 변경 제안이 아직 승인되지 않음
+- `recommendation_status`가 `pending` 또는 `failed`여도 저장된 약속 날짜는 유효합니다. 화면에는 바뀐 날짜를 표시하되, 옛 추천 코스를 최신 코스처럼 표시하지 말고 **재추천 버튼**(기존 `POST /rooms/{room_id}/recommend`)을 제공하세요.
+- 새 날짜의 **참가자별 명시적 가능 여부**는 기존 `GET /rooms/{room_id}/appointment/date-availability`로 별도 확인합니다. 저장된 가능 날짜가 다른 것은 AI 재추천을 막지는 않지만 실제 참가 가능을 보장하는 것은 아닙니다.
+- 날짜가 달라지면 추천 `source_revision`도 달라지고, 이전 추천은 `is_stale: true`로 표시됩니다. 추천 완료 후 새 `GET /rooms/{room_id}/recommendation` 결과를 읽어 주세요.
+
