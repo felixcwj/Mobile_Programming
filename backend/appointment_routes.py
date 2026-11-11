@@ -1,6 +1,7 @@
 from datetime import date, datetime, time, timezone
 from typing import Annotated
 from zoneinfo import ZoneInfo
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from firebase_admin import firestore
@@ -54,7 +55,20 @@ def make_appointment_router(db, current_user, collect_constraints, regenerate_ro
         return db.collection("rooms").document(room_id)
 
     def own_history(uid, room_id):
+        # Legacy/latest alias retained for existing clients and older rooms.
         return db.collection("users").document(uid).collection("appointment_history").document(room_id)
+
+    def appointment_history(uid, room_id, appointment_id):
+        # Distinct document per appointment, even when multiple appointments share a room.
+        return db.collection("users").document(uid).collection("appointment_history").document(
+            f"{room_id}__{appointment_id}"
+        )
+
+    def write_history(transaction, uid, room_id, room, appointment):
+        data = history_data(room_id, room, appointment, uid)
+        transaction.set(own_history(uid, room_id), data)
+        if appointment.get("appointment_id"):
+            transaction.set(appointment_history(uid, room_id, appointment["appointment_id"]), data)
 
     def room_for_member(room_id, uid):
         snap = room_ref(room_id).get()
@@ -75,6 +89,7 @@ def make_appointment_router(db, current_user, collect_constraints, regenerate_ro
             "location": appointment.get("location", ""),
             "additional_notes": appointment.get("additional_notes", ""),
             "appointment_version": appointment["version"],
+            "appointment_id": appointment.get("appointment_id"),
             "status": "active",
             "uid": uid,
             "updated_at": firestore.SERVER_TIMESTAMP,
@@ -118,26 +133,41 @@ def make_appointment_router(db, current_user, collect_constraints, regenerate_ro
 
     @router.get("/calendar/room-appointments")
     def room_calendar(user: User):
-        """Read member-visible room dates directly from rooms so leaving removes access."""
-        results = db.collection("rooms").where("member_uids", "array_contains", user["uid"]).stream()
+        """Private room timeline: all recorded appointments plus pending room dates."""
+        joined = list(db.collection("rooms").where("member_uids", "array_contains", user["uid"]).stream())
+        current_rooms = {snap.id: (snap.to_dict() or {}) for snap in joined}
         events = []
-        for snap in results:
-            room = snap.to_dict() or {}
-            confirmed = room.get("confirmed_appointment")
-            scheduled = room.get("room_schedule") or {}
-            start = confirmed.get("starts_at") if confirmed else scheduled.get("starts_at")
-            if start is None:
+        for key, data in user_history_entries(user["uid"]):
+            rid = data.get("room_id")
+            if rid not in current_rooms or data.get("status") != "active":
                 continue
             events.append({
-                "id": "meeting:" + snap.id,
-                "room_id": snap.id,
-                "title": room.get("title") or "새 약속방",
-                "starts_at": start,
-                "ends_at": confirmed.get("ends_at") if confirmed else None,
-                "location": confirmed.get("location", "") if confirmed else "",
+                "id": "meeting:" + key,
+                "room_id": rid,
+                "appointment_id": data.get("appointment_id"),
+                "title": data.get("title") or "새 약속방",
+                "starts_at": data.get("starts_at"),
+                "ends_at": data.get("ends_at"),
+                "location": data.get("location", ""),
                 "source": "meeting",
-                "status": "confirmed" if confirmed else "scheduled",
-                "version": confirmed.get("version") if confirmed else scheduled.get("version"),
+                "status": "confirmed",
+                "version": data.get("appointment_version"),
+            })
+        for rid, room in current_rooms.items():
+            scheduled = room.get("room_schedule") or {}
+            if room.get("confirmed_appointment") or not scheduled.get("starts_at"):
+                continue
+            events.append({
+                "id": "meeting:" + rid,
+                "room_id": rid,
+                "appointment_id": None,
+                "title": room.get("title") or "새 약속방",
+                "starts_at": scheduled["starts_at"],
+                "ends_at": None,
+                "location": "",
+                "source": "meeting",
+                "status": "scheduled",
+                "version": scheduled.get("version"),
             })
         events.sort(key=lambda event: event["starts_at"])
         return {"events": events, "count": len(events)}
@@ -175,6 +205,7 @@ def make_appointment_router(db, current_user, collect_constraints, regenerate_ro
             raise HTTPException(409, "추천 일정의 시각이 올바르지 않습니다.")
         location = str(stops[0].get("name") or stops[0].get("address") or conditions.get("meeting_region") or "")[:240]
         ref = room_ref(room_id)
+        new_appointment_id = uuid4().hex
 
         @firestore.transactional
         def apply(transaction):
@@ -196,6 +227,7 @@ def make_appointment_router(db, current_user, collect_constraints, regenerate_ro
                 raise HTTPException(409, "아직 확정된 약속이 없습니다.")
             new_version = (previous or {}).get("version", 0) + 1
             value = {
+                "appointment_id": new_appointment_id,
                 "date": day.isoformat(),
                 "starts_at": starts_at,
                 "ends_at": ends_at,
@@ -211,7 +243,11 @@ def make_appointment_router(db, current_user, collect_constraints, regenerate_ro
                 "updated_at": firestore.SERVER_TIMESTAMP,
             })
             for member_uid in members:
-                transaction.set(own_history(member_uid, room_id), history_data(room_id, live, value, member_uid))
+                if previous and not previous.get("appointment_id"):
+                    legacy = {**previous, "appointment_id": f"legacy-{room_id}"}
+                    transaction.set(appointment_history(member_uid, room_id, legacy["appointment_id"]),
+                                    history_data(room_id, live, legacy, member_uid))
+                write_history(transaction, member_uid, room_id, live, value)
             return value
 
         return {"room_id": room_id, "appointment": apply(db.transaction())}
@@ -320,12 +356,14 @@ def make_appointment_router(db, current_user, collect_constraints, regenerate_ro
                     "availability": availability,
                 })
             starts_at, ends_at = appointment_window(body.date, old_start.time().isoformat(), old_end.time().isoformat())
-            updated = {**appointment, "date": body.date.isoformat(), "starts_at": starts_at, "ends_at": ends_at, "version": body.version + 1, "recommendation_revision": None}
+            updated = {**appointment, "appointment_id": appointment.get("appointment_id") or f"legacy-{room_id}",
+                       "date": body.date.isoformat(), "starts_at": starts_at, "ends_at": ends_at,
+                       "version": body.version + 1, "recommendation_revision": None}
             if body.additional_notes is not None:
                 updated['additional_notes'] = body.additional_notes
             transaction.update(ref, {"confirmed_appointment": updated, "updated_at": firestore.SERVER_TIMESTAMP})
             for member_uid in room.get("member_uids", []):
-                transaction.set(own_history(member_uid, room_id), history_data(room_id, room, updated, member_uid))
+                write_history(transaction, member_uid, room_id, room, updated)
             return updated, True, availability
 
         appointment, changed, availability = apply(db.transaction())
@@ -380,14 +418,15 @@ def make_appointment_router(db, current_user, collect_constraints, regenerate_ro
                 ends = appointment['ends_at'].astimezone(KST)
                 target = date.fromisoformat(request['date'])
                 starts_at, ends_at = appointment_window(target, starts.time().isoformat(), ends.time().isoformat())
-                updated = {**appointment, 'date': target.isoformat(), 'starts_at': starts_at,
+                updated = {**appointment, 'appointment_id': appointment.get('appointment_id') or f'legacy-{room_id}',
+                           'date': target.isoformat(), 'starts_at': starts_at,
                            'ends_at': ends_at, 'version': appointment['version'] + 1,
                            'recommendation_revision': None}
                 if request.get('additional_notes') is not None:
                     updated['additional_notes'] = request['additional_notes']
                 transaction.update(ref, {'confirmed_appointment': updated, 'updated_at': firestore.SERVER_TIMESTAMP})
                 for member_uid in voters:
-                    transaction.set(own_history(member_uid, room_id), history_data(room_id, room, updated, member_uid))
+                    write_history(transaction, member_uid, room_id, room, updated)
                 updates['approved_at'] = datetime.now(timezone.utc)
             transaction.update(request_ref, updates)
             request.update(updates)
@@ -405,28 +444,39 @@ def make_appointment_router(db, current_user, collect_constraints, regenerate_ro
         room = room_for_member(room_id, user["uid"])
         return {"room_id": room_id, "appointment": room.get("confirmed_appointment")}
 
+    def user_history_entries(uid):
+        snapshots = list(db.collection("users").document(uid).collection("appointment_history").limit(500).stream())
+        records = [(snap.id, snap.to_dict() or {}) for snap in snapshots]
+        # Ignore legacy latest-per-room aliases when their actual event record exists.
+        real_record_ids = {key for key, data in records if key != data.get("room_id")}
+        alias_status = {key: data.get("status") for key, data in records if key == data.get("room_id")}
+        visible = []
+        for key, data in records:
+            if key == data.get("room_id") and f"{key}__{data.get('appointment_id')}" in real_record_ids:
+                continue
+            # The latest-per-room alias is marked left on room exit. Apply that
+            # to past events too, so the user's calendar hides all exited-room events.
+            if alias_status.get(data.get("room_id")) == "left":
+                data = {**data, "status": "left"}
+            visible.append((key, data))
+        return visible
+
     @router.get("/mypage/appointments")
     def my_appointments(user: User):
-        query = db.collection("users").document(user["uid"]).collection("appointment_history").limit(200)
-        results = []
-        for snap in query.stream():
-            data = snap.to_dict() or {}
-            results.append({"room_id": snap.id, **data})
+        results = [{"history_id": key, **data} for key, data in user_history_entries(user["uid"])]
         results.sort(key=lambda item: item.get("starts_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
         return {"appointments": results, "count": len(results)}
 
     @router.get("/calendar/confirmed-appointments")
     def my_confirmed_calendar(user: User):
-        uid = user["uid"]
-        query = db.collection("users").document(uid).collection("appointment_history").limit(200)
         events = []
-        for snap in query.stream():
-            data = snap.to_dict() or {}
+        for key, data in user_history_entries(user["uid"]):
             if data.get("status") != "active":
                 continue
             events.append({
-                "id": "meeting:" + snap.id,
-                "room_id": snap.id,
+                "id": "meeting:" + key,
+                "room_id": data.get("room_id"),
+                "appointment_id": data.get("appointment_id"),
                 "title": data.get("title") or "약속",
                 "starts_at": data.get("starts_at"),
                 "ends_at": data.get("ends_at"),
