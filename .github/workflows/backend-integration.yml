@@ -24,4 +24,4 @@ jobs:
       - name: Run backend tests
         run: |
           cd backend
-          python -m pytest -q tests/test_mypage.py tests/test_mypage_login_compat.py tests/test_account_cleanup.py tests/test_calendar_contract.py tests/test_calendar_behavior.py tests/test_appointment.py
+          python -m pytest -q tests
