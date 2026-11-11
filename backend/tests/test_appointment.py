@@ -324,3 +324,91 @@ def test_confirmed_room_date_change_updates_member_calendar(setup_app):
     current = client.get("/calendar/room-appointments").json()["events"]
     assert current[0]["starts_at"] == "2026-11-20T03:00:00+00:00"
     assert current[0]["version"] == 2
+
+
+def test_owner_date_change_attempts_ai_for_new_date(monkeypatch):
+    monkeypatch.setattr(appointment_routes.firestore, "transactional", lambda fn: fn)
+    db = FakeDB()
+    who = {"uid": "alice"}
+    attempts = []
+
+    def current_user():
+        return who
+
+    def constraints(room_id, uid):
+        return {"source_revision": "revision1"}
+
+    async def regenerate(room_id, uid):
+        current = db.docs["rooms/r1"]["confirmed_appointment"]
+        attempts.append((uid, current["date"]))
+        return {"plan": {"date": current["date"]}}
+
+    app = FastAPI()
+    app.include_router(appointment_routes.make_appointment_router(db, current_user, constraints, regenerate))
+    client = TestClient(app)
+    assert client.post("/rooms/r1/appointment/confirm", json={"recommendation_revision": "revision1"}).status_code == 200
+    changed = client.patch("/rooms/r1/appointment/date", json={"date": "2026-11-20", "version": 1})
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["recommendation_status"] == "updated"
+    assert changed.json()["recommendation"]["plan"]["date"] == "2026-11-20"
+    assert attempts == [("alice", "2026-11-20")]
+    unchanged = client.patch("/rooms/r1/appointment/date", json={"date": "2026-11-20", "version": 2})
+    assert unchanged.status_code == 200
+    assert unchanged.json()["recommendation_status"] == "unchanged"
+    assert len(attempts) == 1
+
+
+def test_member_date_change_refreshes_ai_only_after_unanimous_approval(monkeypatch):
+    monkeypatch.setattr(appointment_routes.firestore, "transactional", lambda fn: fn)
+    db = FakeDB()
+    who = {"uid": "alice"}
+    attempts = []
+
+    def current_user():
+        return who
+
+    def constraints(room_id, uid):
+        return {"source_revision": "revision1"}
+
+    async def regenerate(room_id, uid):
+        attempts.append(db.docs["rooms/r1"]["confirmed_appointment"]["date"])
+        return {"plan": {"date": attempts[-1]}}
+
+    app = FastAPI()
+    app.include_router(appointment_routes.make_appointment_router(db, current_user, constraints, regenerate))
+    client = TestClient(app)
+    assert client.post("/rooms/r1/appointment/confirm", json={"recommendation_revision": "revision1"}).status_code == 200
+    who["uid"] = "bob"
+    proposal = client.patch("/rooms/r1/appointment/date", json={"date": "2026-11-22", "version": 1})
+    request_id = proposal.json()["date_change_request"]["request_id"]
+    assert attempts == []
+    assert db.docs["rooms/r1"]["confirmed_appointment"]["date"] == "2026-11-15"
+    who["uid"] = "alice"
+    vote = client.post(f"/rooms/r1/appointment/date-requests/{request_id}/vote", json={"approve": True})
+    assert vote.status_code == 200, vote.text
+    assert vote.json()["recommendation_status"] == "updated"
+    assert attempts == ["2026-11-22"]
+
+
+def test_ai_outage_does_not_undo_approved_date(monkeypatch):
+    monkeypatch.setattr(appointment_routes.firestore, "transactional", lambda fn: fn)
+    db = FakeDB()
+
+    def current_user():
+        return {"uid": "alice"}
+
+    def constraints(room_id, uid):
+        return {"source_revision": "revision1"}
+
+    async def regenerate(room_id, uid):
+        raise HTTPException(503, "AI 서비스에 연결할 수 없습니다.")
+
+    app = FastAPI()
+    app.include_router(appointment_routes.make_appointment_router(db, current_user, constraints, regenerate))
+    client = TestClient(app)
+    assert client.post("/rooms/r1/appointment/confirm", json={"recommendation_revision": "revision1"}).status_code == 200
+    response = client.patch("/rooms/r1/appointment/date", json={"date": "2026-11-23", "version": 1})
+    assert response.status_code == 200
+    assert response.json()["recommendation_status"] == "failed"
+    assert response.json()["recommendation_needs_refresh"] is True
+    assert db.docs["rooms/r1"]["confirmed_appointment"]["date"] == "2026-11-23"
