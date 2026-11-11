@@ -659,3 +659,18 @@ def test_confirmed_date_change_alters_revision_without_changing_notes(app_module
     before = module._conditions_revision(room, prefs)
     room["confirmed_appointment"]["date"] = "2026-11-20"
     assert module._conditions_revision(room, prefs) != before
+
+
+def test_first_confirmation_of_same_day_does_not_stale_ai_revision(app_module):
+    module = app_module
+    room = {"member_uids": ["alice"], "meeting_mode": "middle"}
+    prefs = [{
+        "uid": "alice", "budget": 30000, "region": "서울",
+        "available_date": "2026-11-15", "start_time": "12:00",
+        "end_time": "17:00", "activities": ["카페"],
+    }]
+    baseline = module._conditions_revision(room, prefs)
+    room["confirmed_appointment"] = {"date": "2026-11-15", "additional_notes": ""}
+    assert module._conditions_revision(room, prefs) == baseline
+    room["confirmed_appointment"]["date"] = "2026-11-20"
+    assert module._conditions_revision(room, prefs) != baseline
