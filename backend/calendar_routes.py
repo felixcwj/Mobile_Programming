@@ -15,6 +15,9 @@ class EventInput(BaseModel):
     location: str = Field(default="", max_length=240)
     memo: str = Field(default="", max_length=2000)
     all_day: bool = False
+    repeat: Literal["none", "daily", "weekly", "monthly", "yearly"] = "none"
+    category: Literal["personal", "school", "work"] = "personal"
+    reminder_minutes: int | None = Field(default=None, ge=0, le=525600)
 
     @model_validator(mode="after")
     def check_dates(self):
@@ -100,6 +103,9 @@ def make_calendar_router(db, current_user):
             "location": body.location,
             "memo": body.memo,
             "all_day": body.all_day,
+            "repeat": body.repeat,
+            "category": body.category,
+            "reminder_minutes": body.reminder_minutes,
         }
 
     @router.get("/events")
@@ -120,6 +126,13 @@ def make_calendar_router(db, current_user):
             .limit(500)
         )
         return {"events": [public_event(s) for s in query.stream() if not (s.to_dict() or {}).get("deleted")], "limit": 500}
+
+    @router.get("/recurring-events")
+    def list_recurring_events(user: User):
+        """Recurring templates for Flutter to expand locally by displayed month."""
+        query = events(user["uid"]).where("repeat", "in", ["daily", "weekly", "monthly", "yearly"]).limit(500)
+        results = [public_event(s) for s in query.stream() if not (s.to_dict() or {}).get("deleted")]
+        return {"events": results, "count": len(results), "limit": 500}
 
     @router.post("/events", status_code=201)
     def create_event(body: EventInput, user: User):
