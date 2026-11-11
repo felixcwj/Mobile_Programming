@@ -1,0 +1,27 @@
+name: Integrated backend checks
+
+on:
+  push:
+    branches:
+      - feature/backend-integration
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-integration.yml"
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r backend/requirements.txt pytest
+      - name: Compile backend
+        run: python -m compileall -q backend
+      - name: Run backend tests
+        run: |
+          cd backend
+          python -m pytest -q tests
