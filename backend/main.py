@@ -765,7 +765,9 @@ def _conditions_revision(room: dict, prefs: list[dict], shared_decisions: list[d
         'shared_decisions': shared_decisions or [],
         'member_personalization': personalization or [],
         'appointment_additional_notes': (room.get('confirmed_appointment') or {}).get('additional_notes', ''),
-        'confirmed_date': (room.get('confirmed_appointment') or {}).get('date'),
+        'effective_date': ((room.get('confirmed_appointment') or {}).get('date')
+                           or (prefs[0].get('available_date') if prefs and
+                               len({p.get('available_date') for p in prefs}) == 1 else None)),
         'prefs': sorted([
             {k: p.get(k) for k in ('uid', 'budget', 'region', 'departure_location',
                                    'available_date', 'start_time', 'end_time', 'activities', 'additional_notes')}
