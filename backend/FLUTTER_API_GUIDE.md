@@ -281,8 +281,8 @@ TextFormField(
 
 - 개인 일정은 기존 `/calendar/events`의 사용자별 데이터에 저장됩니다. 다른 참가자에게 공유되지 않습니다.
 - 홈에서 약속 방을 생성한 **직후**에는 날짜가 없습니다. 약속 방에서 날짜·시각을 선택하면 `PUT /rooms/{room_id}/schedule`로 저장하세요. AI 추천 확정 전에도 현재 방 구성원 모두의 캘린더에 표시됩니다.
-- `PUT /rooms/{room_id}/schedule` 요청 예: `{"starts_at":"2026-11-15T13:00:00+09:00","version":0}`. 처음 저장은 `version: 0`, 변경은 `GET /rooms/{room_id}/schedule`에서 받아온 최신 `version`을 사용합니다. 일정 제거는 `starts_at: null`로 전송합니다. 임시 일정 수정은 방장만 할 수 있습니다.
-- `GET /rooms/{room_id}/schedule`: 방 참가자만 현재 방 일정 조회. `schedule: null`이면 날짜 미정입니다.
+- `PUT /rooms/{room_id}/schedule` 요청 예: `{"starts_at":"2026-11-15T13:00:00+09:00","version":0}`. 처음 저장은 `version: 0`, 변경은 `GET /rooms/{room_id}/schedule`에서 받아온 최신 `version`을 사용합니다. 일정 제거는 `starts_at: null`로 전송합니다. 제거한 후에도 `version`이 증가하므로 재등록할 때는 최신 버전을 사용하세요. 임시 일정 수정은 방장만 할 수 있습니다.
+- `GET /rooms/{room_id}/schedule`: 방 참가자만 현재 방 일정 조회. `schedule: null`이면 한 번도 날짜를 지정하지 않은 방입니다. 삭제 이후에는 `schedule.starts_at: null`이며 최신 `version`이 유지됩니다.
 - `GET /calendar/room-appointments`: 현재 사용자가 참여한 모든 방 중 날짜가 설정된 약속 반환. `events[].status`가 `scheduled`(날짜만 설정), `confirmed`(AI 추천 확정) 중 하나입니다. `starts_at`은 필수, `ends_at`은 임시 약속에서 `null`입니다. 시간 길이를 임의로 추측하지 마세요. 방 탈퇴 시 해당 사용자의 목록에서만 사라집니다.
 - 이미 AI 추천을 확정한 방은 `PUT /rooms/{room_id}/schedule` 수정이 막힙니다(409). 확정된 약속 날짜는 기존 `PATCH /rooms/{room_id}/appointment/date`와 동의/투표 기능을 사용하세요. `/calendar/room-appointments`는 확정 약속의 날짜를 우선 사용하여 **방 하나가 중복 표시되지 않습니다**.
 - **현재 추천되지 않는 중복 호출:** 기존 `GET /calendar/confirmed-appointments`도 존재합니다. 화면 캘린더에서는 `GET /calendar/room-appointments`를 사용하고 두 결과를 합치지 마세요. 동일한 확정 약속이 중복될 수 있습니다.
