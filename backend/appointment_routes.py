@@ -22,6 +22,17 @@ class AppointmentDateChange(BaseModel):
         return self
 
 
+class RoomScheduleInput(BaseModel):
+    starts_at: datetime | None = None
+    version: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_schedule(self):
+        if self.starts_at is not None and self.starts_at.tzinfo is None:
+            raise ValueError("약속 시작 시각에는 시간대 정보가 필요합니다.")
+        return self
+
+
 class AppointmentConfirmation(BaseModel):
     recommendation_revision: str = Field(min_length=1)
     version: int | None = Field(default=None, ge=1)
@@ -68,6 +79,67 @@ def make_appointment_router(db, current_user, collect_constraints):
             "uid": uid,
             "updated_at": firestore.SERVER_TIMESTAMP,
         }
+
+    @router.put("/rooms/{room_id}/schedule")
+    def set_room_schedule(room_id: str, body: RoomScheduleInput, user: User):
+        """A room's unconfirmed start date/time, shown to all current members."""
+        uid = user["uid"]
+        ref = room_ref(room_id)
+
+        @firestore.transactional
+        def apply(transaction):
+            snap = ref.get(transaction=transaction)
+            if not snap.exists:
+                raise HTTPException(404, "약속 방을 찾을 수 없습니다.")
+            live = snap.to_dict() or {}
+            if uid not in live.get("member_uids", []) or live.get("owner_uid") != uid:
+                raise HTTPException(403, "약속 일정 설정은 방장만 할 수 있습니다.")
+            if live.get("confirmed_appointment"):
+                raise HTTPException(409, "확정된 약속은 별도 날짜 변경 기능을 이용하세요.")
+            previous = live.get("room_schedule") or {}
+            current_version = previous.get("version", 0)
+            if body.version != current_version:
+                raise HTTPException(409, "약속 일정이 변경되었습니다. 다시 불러오세요.")
+            previous_start = previous.get("starts_at")
+            new_start = body.starts_at.astimezone(timezone.utc) if body.starts_at else None
+            if previous_start == new_start:
+                return previous or None
+            value = {"starts_at": new_start, "version": current_version + 1} if new_start else None
+            transaction.update(ref, {"room_schedule": value, "updated_at": firestore.SERVER_TIMESTAMP})
+            return value
+
+        return {"room_id": room_id, "schedule": apply(db.transaction())}
+
+    @router.get("/rooms/{room_id}/schedule")
+    def get_room_schedule(room_id: str, user: User):
+        room = room_for_member(room_id, user["uid"])
+        return {"room_id": room_id, "schedule": room.get("room_schedule")}
+
+    @router.get("/calendar/room-appointments")
+    def room_calendar(user: User):
+        """Read member-visible room dates directly from rooms so leaving removes access."""
+        results = db.collection("rooms").where("member_uids", "array_contains", user["uid"]).stream()
+        events = []
+        for snap in results:
+            room = snap.to_dict() or {}
+            confirmed = room.get("confirmed_appointment")
+            scheduled = room.get("room_schedule") or {}
+            start = confirmed.get("starts_at") if confirmed else scheduled.get("starts_at")
+            if start is None:
+                continue
+            events.append({
+                "id": "meeting:" + snap.id,
+                "room_id": snap.id,
+                "title": room.get("title") or "새 약속방",
+                "starts_at": start,
+                "ends_at": confirmed.get("ends_at") if confirmed else None,
+                "location": confirmed.get("location", "") if confirmed else "",
+                "source": "meeting",
+                "status": "confirmed" if confirmed else "scheduled",
+                "version": confirmed.get("version") if confirmed else scheduled.get("version"),
+            })
+        events.sort(key=lambda event: event["starts_at"])
+        return {"events": events, "count": len(events)}
 
     @router.post("/rooms/{room_id}/appointment/confirm")
     def confirm_appointment(room_id: str, body: AppointmentConfirmation, user: User):
