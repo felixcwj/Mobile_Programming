@@ -284,9 +284,9 @@ class CreateRoomRequest(BaseModel):
 class JoinRoomRequest(BaseModel):
     invite_code: str = Field(
         min_length=7,
-        max_length=8,
-        pattern=r"^(?:[A-Za-z0-9#@!]{7}|[A-Za-z0-9]{8})$",
-        description="신규 코드는 영문·숫자·특수문자(#, @, !) 포함 7자리; 기존 영숫자 7~8자리도 허용",
+        max_length=7,
+        pattern=r"^[A-Za-z0-9#@!]{7}$",
+        description="영문·숫자·특수문자(#, @, !)로 구성된 정확히 7자리 코드",
     )
 
 
@@ -426,10 +426,28 @@ def _join_room_tx(tx, invite_ref, uid):
             "ends_at": confirmed["ends_at"],
             "location": confirmed.get("location", ""),
             "appointment_version": confirmed["version"],
+            "appointment_id": confirmed.get("appointment_id"),
+            "additional_notes": confirmed.get("additional_notes", ""),
             "status": "active",
             "uid": uid,
             "updated_at": firestore.SERVER_TIMESTAMP,
         })
+        if confirmed.get("appointment_id"):
+            tx.set(db.collection("users").document(uid).collection("appointment_history").document(
+                f"{room_id}__{confirmed['appointment_id']}"), {
+                "room_id": room_id,
+                "title": (snap.to_dict() or {}).get("title") or "새 약속방",
+                "date": confirmed["date"],
+                "starts_at": confirmed["starts_at"],
+                "ends_at": confirmed["ends_at"],
+                "location": confirmed.get("location", ""),
+                "appointment_version": confirmed["version"],
+                "appointment_id": confirmed["appointment_id"],
+                "additional_notes": confirmed.get("additional_notes", ""),
+                "status": "active",
+                "uid": uid,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
     return room_id, True
 
 
@@ -543,10 +561,29 @@ def _leave_room_tx(tx, room_ref, uid):
             "ends_at": data["confirmed_appointment"]["ends_at"],
             "location": data["confirmed_appointment"].get("location", ""),
             "appointment_version": data["confirmed_appointment"]["version"],
+            "appointment_id": data["confirmed_appointment"].get("appointment_id"),
+            "additional_notes": data["confirmed_appointment"].get("additional_notes", ""),
             "status": "left",
             "uid": uid,
             "updated_at": firestore.SERVER_TIMESTAMP,
         })
+        appointment_id = data["confirmed_appointment"].get("appointment_id")
+        if appointment_id:
+            tx.set(db.collection("users").document(uid).collection("appointment_history").document(
+                f"{room_ref.id}__{appointment_id}"), {
+                "room_id": room_ref.id,
+                "title": data.get("title") or "새 약속방",
+                "date": data["confirmed_appointment"]["date"],
+                "starts_at": data["confirmed_appointment"]["starts_at"],
+                "ends_at": data["confirmed_appointment"]["ends_at"],
+                "location": data["confirmed_appointment"].get("location", ""),
+                "appointment_version": data["confirmed_appointment"]["version"],
+                "appointment_id": appointment_id,
+                "additional_notes": data["confirmed_appointment"].get("additional_notes", ""),
+                "status": "left",
+                "uid": uid,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
     return len(remaining) == 0
 
 
