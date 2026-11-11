@@ -597,3 +597,65 @@ def test_ai_payload_contains_free_text_notes(app_module, monkeypatch):
     assert payload['conditions']['shared_decisions'][0]['additional_notes'] == '조용한 장소'
     assert payload['conditions']['appointment_additional_notes'] == '휠체어 동선'
     assert 'additional_notes' in captured['messages'][0]['content']
+
+
+def test_confirmed_date_overrides_original_preference_dates_for_ai(app_module):
+    module = app_module
+    db = _RoomMemoryDB()
+    db.docs["rooms/r1/preferences/bob"] = {
+        "uid": "bob", "budget": 25000, "region": "서울",
+        "departure_location": "서울", "available_date": "2026-11-15",
+        "start_time": "13:00", "end_time": "17:00",
+        "activities": ["전시"], "additional_notes": "",
+    }
+    db.docs["users/alice"] = {"preferences": {}}
+    db.docs["users/bob"] = {"preferences": {}}
+    module.db = db
+
+    initial = module._collect_constraints("r1", "alice")
+    assert initial["date"] == "2026-11-15"
+    initial_revision = initial["source_revision"]
+    old_alice_date = db.docs["rooms/r1/preferences/alice"]["available_date"]
+    old_bob_date = db.docs["rooms/r1/preferences/bob"]["available_date"]
+
+    db.docs["rooms/r1"]["confirmed_appointment"] = {
+        "date": "2026-11-20",
+        "starts_at": datetime(2026, 11, 20, 3, 0, tzinfo=timezone.utc),
+        "ends_at": datetime(2026, 11, 20, 8, 0, tzinfo=timezone.utc),
+        "version": 2,
+    }
+    updated = module._collect_constraints("r1", "alice")
+    assert updated["date"] == "2026-11-20"
+    assert updated["start_time"] == "13:00"
+    assert updated["end_time"] == "17:00"
+    assert updated["source_revision"] != initial_revision
+    assert db.docs["rooms/r1/preferences/alice"]["available_date"] == old_alice_date
+    assert db.docs["rooms/r1/preferences/bob"]["available_date"] == old_bob_date
+
+    # After approval, an older preference date must not break course generation.
+    db.docs["rooms/r1/preferences/bob"]["available_date"] = "2026-11-18"
+    assert module._collect_constraints("r1", "alice")["date"] == "2026-11-20"
+
+
+def test_initial_ai_recommendation_still_rejects_disagreeing_dates(app_module):
+    module = app_module
+    db = _RoomMemoryDB()
+    db.docs["rooms/r1/preferences/bob"] = {
+        "uid": "bob", "budget": 25000, "region": "서울",
+        "departure_location": "서울", "available_date": "2026-11-18",
+        "start_time": "13:00", "end_time": "17:00",
+        "activities": ["전시"], "additional_notes": "",
+    }
+    module.db = db
+    with pytest.raises(module.HTTPException) as exc:
+        module._collect_constraints("r1", "alice")
+    assert exc.value.status_code == 409
+
+
+def test_confirmed_date_change_alters_revision_without_changing_notes(app_module):
+    module = app_module
+    room = {"member_uids": ["alice"], "confirmed_appointment": {"date": "2026-11-15", "additional_notes": ""}}
+    prefs = [{"uid": "alice", "available_date": "2026-11-15", "start_time": "12:00", "end_time": "17:00", "activities": ["카페"]}]
+    before = module._conditions_revision(room, prefs)
+    room["confirmed_appointment"]["date"] = "2026-11-20"
+    assert module._conditions_revision(room, prefs) != before
