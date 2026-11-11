@@ -104,7 +104,8 @@ def make_appointment_router(db, current_user, collect_constraints):
             new_start = body.starts_at.astimezone(timezone.utc) if body.starts_at else None
             if previous_start == new_start:
                 return previous or None
-            value = {"starts_at": new_start, "version": current_version + 1} if new_start else None
+            # Retain the version after clearing so a stale device cannot re-add a removed date.
+            value = {"starts_at": new_start, "version": current_version + 1}
             transaction.update(ref, {"room_schedule": value, "updated_at": firestore.SERVER_TIMESTAMP})
             return value
 
