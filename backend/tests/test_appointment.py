@@ -62,9 +62,17 @@ class Collection:
         self.count = count
         return self
 
+    def where(self, field, operator, value):
+        assert field == "member_uids" and operator == "array_contains"
+        self.member_filter = value
+        return self
+
     def stream(self):
         prefix = self.path + "/"
-        return [Snap(Ref(self.db, key)) for key in self.db.docs if key.startswith(prefix) and "/" not in key[len(prefix):]][:self.count]
+        keys = [key for key in self.db.docs if key.startswith(prefix) and "/" not in key[len(prefix):]]
+        if hasattr(self, "member_filter"):
+            keys = [key for key in keys if self.member_filter in self.db.docs[key].get("member_uids", [])]
+        return [Snap(Ref(self.db, key)) for key in keys][:self.count]
 
 
 class Transaction:
@@ -258,3 +266,48 @@ def test_owner_can_change_appointment_notes_immediately(setup_app):
     assert revised.json()['appointment']['version'] == 2
     assert revised.json()['appointment']['additional_notes'] == '식당은 매운 음식 제외'
     assert revised.json()['recommendation_needs_refresh'] is True
+
+
+def test_unconfirmed_room_schedule_visible_to_all_members(setup_app):
+    client, db, who = setup_app
+    response = client.put("/rooms/r1/schedule", json={"starts_at": "2026-11-15T13:00:00+09:00", "version": 0})
+    assert response.status_code == 200, response.text
+    assert response.json()["schedule"]["version"] == 1
+    assert response.json()["schedule"]["starts_at"] == "2026-11-15T04:00:00+00:00"
+    assert client.get("/rooms/r1/schedule").json()["schedule"]["version"] == 1
+    events = client.get("/calendar/room-appointments").json()["events"]
+    assert len(events) == 1
+    assert events[0]["status"] == "scheduled"
+    assert events[0]["ends_at"] is None
+    who["uid"] = "bob"
+    assert client.get("/calendar/room-appointments").json()["events"][0]["room_id"] == "r1"
+    assert client.put("/rooms/r1/schedule", json={"starts_at": "2026-11-16T13:00:00+09:00", "version": 1}).status_code == 403
+    who["uid"] = "outsider"
+    assert client.get("/calendar/room-appointments").json()["events"] == []
+    assert client.get("/rooms/r1/schedule").status_code == 403
+
+
+def test_room_schedule_conflict_and_clearing(setup_app):
+    client, db, who = setup_app
+    assert client.put("/rooms/r1/schedule", json={"starts_at": "2026-11-15T13:00:00+09:00"}).status_code == 200
+    assert client.put("/rooms/r1/schedule", json={"starts_at": "2026-11-16T13:00:00+09:00", "version": 0}).status_code == 409
+    assert client.put("/rooms/r1/schedule", json={"starts_at": "2026-11-16T13:00:00", "version": 1}).status_code == 422
+    deleted = client.put("/rooms/r1/schedule", json={"starts_at": None, "version": 1})
+    assert deleted.status_code == 200, deleted.text
+    assert client.get("/calendar/room-appointments").json()["events"] == []
+
+
+def test_confirmed_room_appears_once_and_leaving_removes_calendar_event(setup_app):
+    client, db, who = setup_app
+    assert client.put("/rooms/r1/schedule", json={"starts_at": "2026-11-15T12:00:00+09:00"}).status_code == 200
+    confirmed = client.post("/rooms/r1/appointment/confirm", json={"recommendation_revision": "revision1"})
+    assert confirmed.status_code == 200, confirmed.text
+    result = client.get("/calendar/room-appointments").json()
+    assert result["count"] == 1
+    assert result["events"][0]["status"] == "confirmed"
+    assert result["events"][0]["ends_at"] is not None
+    who["uid"] = "bob"
+    assert client.get("/calendar/room-appointments").json()["count"] == 1
+    db.docs["rooms/r1"]["member_uids"].remove("bob")
+    assert client.get("/calendar/room-appointments").json()["count"] == 0
+    assert client.get("/mypage/appointments").json()["count"] == 1
