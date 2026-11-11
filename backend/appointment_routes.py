@@ -24,7 +24,7 @@ class AppointmentDateChange(BaseModel):
 
 class RoomScheduleInput(BaseModel):
     starts_at: datetime | None = None
-    version: int | None = Field(default=None, ge=1)
+    version: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def validate_schedule(self):
