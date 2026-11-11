@@ -46,7 +46,7 @@ def appointment_window(day, start, end):
     return starts.astimezone(timezone.utc), ends.astimezone(timezone.utc)
 
 
-def make_appointment_router(db, current_user, collect_constraints):
+def make_appointment_router(db, current_user, collect_constraints, regenerate_room=None):
     router = APIRouter(tags=["appointments"])
     User = Annotated[dict, Depends(current_user)]
 
@@ -250,8 +250,23 @@ def make_appointment_router(db, current_user, collect_constraints):
         room = room_for_member(room_id, user["uid"])
         return date_availability(room_id, room, date)
 
+    async def refresh_recommendation(room_id, uid, result):
+        if not result.get("recommendation_needs_refresh"):
+            result["recommendation_status"] = "unchanged"
+            return result
+        if regenerate_room is None:
+            result["recommendation_status"] = "stale"
+            return result
+        try:
+            result["recommendation"] = await regenerate_room(room_id, uid)
+            result["recommendation_status"] = "updated"
+        except HTTPException as exc:
+            result["recommendation_status"] = "pending" if exc.status_code == 409 else "failed"
+            result["recommendation_error"] = exc.detail
+        return result
+
     @router.patch("/rooms/{room_id}/appointment/date")
-    def change_date(
+    async def change_date(
         room_id: str,
         body: AppointmentDateChange,
         user: User,
@@ -314,12 +329,12 @@ def make_appointment_router(db, current_user, collect_constraints):
             return updated, True, availability
 
         appointment, changed, availability = apply(db.transaction())
-        return {
+        return await refresh_recommendation(room_id, uid, {
             "room_id": room_id,
             "appointment": appointment,
             "recommendation_needs_refresh": changed,
             "availability": availability,
-        }
+        })
 
     @router.get('/rooms/{room_id}/appointment/date-requests')
     def list_date_change_requests(room_id: str, user: User):
@@ -332,7 +347,7 @@ def make_appointment_router(db, current_user, collect_constraints):
         approve: bool
 
     @router.post('/rooms/{room_id}/appointment/date-requests/{request_id}/vote')
-    def vote_date_change(room_id: str, request_id: str, body: DateChangeVote, user: User):
+    async def vote_date_change(room_id: str, request_id: str, body: DateChangeVote, user: User):
         uid = user['uid']
         ref = room_ref(room_id)
         request_ref = ref.collection('date_change_requests').document(request_id)
@@ -379,8 +394,11 @@ def make_appointment_router(db, current_user, collect_constraints):
             return request, approved
 
         request, applied = apply(db.transaction())
-        return {'room_id': room_id, 'date_change_request': request, 'recommendation_needs_refresh': applied,
-                'recommendation_status': 'stale' if applied else ('rejected' if request['status'] == 'rejected' else 'awaiting_votes')}
+        result = {'room_id': room_id, 'date_change_request': request, 'recommendation_needs_refresh': applied}
+        if applied:
+            return await refresh_recommendation(room_id, uid, result)
+        result['recommendation_status'] = ('rejected' if request['status'] == 'rejected' else 'awaiting_votes')
+        return result
 
     @router.get("/rooms/{room_id}/appointment")
     def get_confirmed(room_id: str, user: User):
