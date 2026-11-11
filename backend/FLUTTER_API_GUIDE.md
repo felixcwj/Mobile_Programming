@@ -105,7 +105,7 @@ Content-Type: application/json
 | 방 만들기 | POST `/rooms` | `{"title":"주말 약속","max_members":3}` → `room_id`, **7자리** `invite_code` |
 | 내 방 목록 | GET `/rooms` | `rooms`, `count` |
 | 방 상세 | GET `/rooms/{room_id}` | `member_uids`, `owner_uid`, `members`, `max_members`, `member_count` |
-| 초대코드로 참여 | POST `/rooms/join` | `{"invite_code":"AB2#C@!"}` (신규: 영문·숫자·`#@!` 포함 7자리; 이전 영숫자 7~8자리 호환) |
+| 초대코드로 참여 | POST `/rooms/join` | `{"invite_code":"AB2#C@!"}` (정확히 7자리; 영문·숫자·`#@!` 허용, 8자리 요청은 422) |
 | 내가 입력한 약속 조건 저장 | POST `/rooms/{room_id}/preferences` | 아래 예시 |
 | 참가자별 조건 조회 | GET `/rooms/{room_id}/preferences` | `members`, `submitted_count`, `total_members` |
 | 만남 위치 방식 변경 | PATCH `/rooms/{room_id}/meeting` | `{"mode":"middle"}` 또는 `{"mode":"fixed","region":"강남역"}`; 방장 즉시 변경, 일반 참여자 전원 동의 제안 |
@@ -187,9 +187,9 @@ Content-Type: application/json
 }
 ```
 
-- **캘린더 화면은 두 API를 함께 조회**해야 합니다. `/calendar/events`는 개인/외부 캘린더에서 동기화된 일정 목록, `/calendar/confirmed-appointments`는 참여 중인 확정 약속 목록입니다. 두 데이터를 화면에서 합쳐 보여주세요.
+- **캘린더 화면은** 개인 일정 `/calendar/events`·`/calendar/recurring-events`와 공유 약속 `/calendar/room-appointments`를 함께 조회합니다. `/calendar/confirmed-appointments`까지 중복 합산하면 같은 확정 약속이 두 번 보일 수 있습니다.
 - `starts_from`과 `starts_before`에는 **시간대가 포함된 ISO 8601** 날짜·시간이 필수입니다. `+`는 URL에서 `%2B`로 인코딩하세요. 최대 조회 범위는 약 1년입니다.
-- 확정 약속의 `id`는 `meeting:<room_id>` 형식입니다. **이 ID를 개인 일정 수정/삭제 API에 넣지 마세요.** 확정 약속의 날짜 변경은 `PATCH /rooms/{room_id}/appointment/date`, 나가기는 `DELETE /rooms/{room_id}/members/me`를 사용해야 다른 사람의 약속이 삭제되지 않습니다.
+- 새 확정 약속의 이력 ID는 `meeting:<room_id>__<appointment_id>` 형식입니다. 이전 기록은 `meeting:<room_id>`일 수 있습니다. **이 ID를 개인 일정 수정/삭제 API에 넣지 마세요.** 확정 약속의 날짜 변경은 `PATCH /rooms/{room_id}/appointment/date`, 나가기는 `DELETE /rooms/{room_id}/members/me`를 사용해야 다른 사람의 약속이 삭제되지 않습니다.
 - `version`은 수정 충돌 방지용 숫자입니다. 서버에서 받은 최신 버전을 그대로 보내세요. 이전 버전이면 HTTP 409가 발생하며, 화면에서 다시 조회하도록 안내합니다.
 - 날짜를 변경하기 전에 `GET /rooms/{room_id}/appointment/date-availability?date=YYYY-MM-DD`를 호출하세요. 각 참가자는 `status`가 `available`(저장된 가능 날짜 일치), `different_date`(다른 날짜 선택), `missing`(미입력) 중 하나로 반환됩니다. `all_available`이 `false`이면 프론트엔드에서 변경 전 경고할 수 있습니다.
 - 날짜 변경 요청에 `?require_all_available=true`를 붙이면 **모든 참가자의 저장된 가능 날짜가 일치하는 경우에만** 변경됩니다. 불일치/미입력 시 HTTP 409와 `detail.availability`를 반환합니다. 옵션을 생략하면 이전 API처럼 방장이 변경할 수 있으며, 응답의 `availability.requires_member_confirmation`으로 경고를 표시하세요.
@@ -243,7 +243,7 @@ FastAPI는 대체로 JSON을 반환하며, 실패 시 `{"detail":"오류 내용"
 
 - 서버 Base URL/실행 및 배포 환경
 - **추천 확정**은 방장만 가능. **조건/날짜 수정**은 방장 즉시 반영, 일반 참여자 전원 동의 필요. 투표 이후 Flutter 화면이 목록을 다시 조회해야 합니다.
-- 과거 약속 보관 방식: 현재 **방 하나당 최신 확정 약속 한 건** 기록, 같은 방에서 여러 번 약속 시 추가 설계 필요
+- 과거 약속 보관 방식: 약속별 `appointment_id`를 사용하여 복수 기록 누적. 방의 `confirmed_appointment`는 최신 건만 유지
 - 일반 참여자 날짜 변경 요청에 대한 **명시적 전원 동의/거절** 구현. 단, 날짜가 변경되어도 AI 코스 자동 재생성은 미구현이며 `recommendation_needs_refresh: true`를 확인하고 새 코스를 요청해야 합니다.
 - 프로필 사진, 자기소개, 상세주소의 저장 API와 실제 스토리지
 - 팀 Gmail 주소 `SUPPORT_EMAIL`, 후원 URL `DEVELOPER_DONATION_URL` 설정
@@ -328,4 +328,15 @@ TextFormField(
 - `recommendation_status`가 `pending` 또는 `failed`여도 저장된 약속 날짜는 유효합니다. 화면에는 바뀐 날짜를 표시하되, 옛 추천 코스를 최신 코스처럼 표시하지 말고 **재추천 버튼**(기존 `POST /rooms/{room_id}/recommend`)을 제공하세요.
 - 새 날짜의 **참가자별 명시적 가능 여부**는 기존 `GET /rooms/{room_id}/appointment/date-availability`로 별도 확인합니다. 저장된 가능 날짜가 다른 것은 AI 재추천을 막지는 않지만 실제 참가 가능을 보장하는 것은 아닙니다.
 - 날짜가 달라지면 추천 `source_revision`도 달라지고, 이전 추천은 `is_stale: true`로 표시됩니다. 추천 완료 후 새 `GET /rooms/{room_id}/recommendation` 결과를 읽어 주세요.
+
+## 10. 초대 코드·여러 약속 이력 통합 (2026-11-11)
+
+- `POST /rooms/join` 요청의 `invite_code`는 **정확히 7자리**입니다. 허용 문자: 영문, 숫자, `#@!`. 8자리 코드는 HTTP 422로 거부됩니다. 새 방에서 생성되는 코드는 각 문자 분류를 최소 하나씩 포함합니다.
+- 기존 Firestore에 남아 있는 8자리 초대 코드는 **자동 이전되지 않습니다.** 백엔드 `migrate_invite_codes.py`로 드라이런하고 운영 담당자가 승인한 뒤 마이그레이션을 실행해야 합니다. 마이그레이션은 실제 초대 코드를 변경하므로 기존 초대 링크/코드는 더 이상 쓸 수 없습니다.
+- 같은 방에서 여러 번 약속을 확정하면 `appointment_id`가 매번 새로 생기며 사용자별 `appointment_history/{room_id}__{appointment_id}`에 저장합니다. `appointment_history/{room_id}`는 오래된 클라이언트 호환을 위해 가장 최신 기록의 별칭으로 유지됩니다.
+- `GET /mypage/appointments`는 중복 별칭을 제외한 여러 이력 목록을 반환합니다. `history_id`, `room_id`, `appointment_id`를 구분해 사용하세요.
+- `GET /calendar/room-appointments`는 참여 중인 방의 **날짜만 정한 약속과 누적 확정 약속**을 함께 돌려줍니다. 각 확정 이벤트의 고유 ID는 `meeting:{history_id}`이며 `room_id`가 같다고 하나로 합치면 과거 약속이 사라집니다. 날짜 미정인 방은 나오지 않습니다. 사용자가 방을 나간 경우 다른 사용자의 일정에는 영향이 없습니다.
+- `GET /rooms/{room_id}/appointment`는 해당 방의 **최신 확정 약속 한 건**만 반환하며 과거 약속 전체를 나타내지 않습니다.
+- `PATCH /rooms/{room_id}/appointment/date`는 최신 확정 약속을 변경합니다. 이전에 확정한 약속들의 날짜와 이력은 보존됩니다.
+- **중요:** 현재 같은 방에서 두 번째 약속을 계획하는 Flutter 전용 플로우는 별도로 완성해야 합니다. 최신 확정 약속이 설정되어 있는 동안 AI가 그 날짜를 추천 기준으로 삼으므로, 새로운 날짜를 계획·확정하는 서버 워크플로도 추가 설계가 필요합니다. 누적 저장 구조만으로 새로운 약속 생성의 사용자 경험이 완성되는 것은 아닙니다.
 
