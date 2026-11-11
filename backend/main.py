@@ -266,15 +266,14 @@ def logout(user: Annotated[dict, Depends(current_user)]):
 
 # -------------------- Home / appointment rooms --------------------
 
-import secrets
-import string
 from datetime import date, time
 from google.api_core.exceptions import GoogleAPICallError
+from room_rules import generate_invite_code, get_room_max_members, MAX_ROOM_MEMBERS
 
 
 class CreateRoomRequest(BaseModel):
     title: str | None = Field(default=None, max_length=30)
-    max_members: int = Field(default=3, ge=2, le=8)
+    max_members: int = Field(default=3, ge=2, le=MAX_ROOM_MEMBERS)
 
     @model_validator(mode="after")
     def validate_title(self):
@@ -286,7 +285,8 @@ class JoinRoomRequest(BaseModel):
     invite_code: str = Field(
         min_length=7,
         max_length=8,
-        pattern=r"^[A-Za-z0-9]+$"
+        pattern=r"^(?:[A-Za-z0-9#@!]{7}|[A-Za-z0-9]{8})$",
+        description="신규 코드는 영문·숫자·특수문자(#, @, !) 포함 7자리; 기존 영숫자 7~8자리도 허용",
     )
 
 
@@ -298,6 +298,7 @@ class RoomPreferenceRequest(BaseModel):
     end_time: time
     activities: list[str] = Field(min_length=1, max_length=10)
     departure_location: str | None = Field(default=None, max_length=100, description="출발 위치; 미입력 시 region 사용")
+    additional_notes: str = Field(default="", max_length=1000, description="AI 추천에 반영할 기타 사항 (자유 서술)")
 
     @model_validator(mode="after")
     def validate_preferences(self):
@@ -313,6 +314,7 @@ class RoomPreferenceRequest(BaseModel):
         if any(not isinstance(a, str) or not a.strip() or len(a) > 40 for a in self.activities):
             raise ValueError("활동명은 1~40자로 입력하세요.")
         self.activities = list(dict.fromkeys(a.strip() for a in self.activities))
+        self.additional_notes = self.additional_notes.strip()
         return self
 
 
@@ -324,6 +326,7 @@ def _room_data(snap):
         "owner_uid": data.get("owner_uid"),
         "member_uids": data.get("member_uids", []),
         "member_count": len(data.get("member_uids", [])),
+        "max_members": get_room_max_members(data),
         "invite_code": data.get("invite_code"),
         "created_at": data.get("created_at"),
     }
@@ -350,9 +353,8 @@ def _create_room_tx(tx, room_ref, invite_ref, payload):
 @app.post("/rooms", status_code=status.HTTP_201_CREATED, tags=["Rooms"])
 def create_room(body: CreateRoomRequest, user: Annotated[dict, Depends(current_user)]):
     uid = user["uid"]
-    alphabet = string.ascii_uppercase + string.digits
     for _ in range(5):
-        code = "".join(secrets.choice(alphabet) for _ in range(8))
+        code = generate_invite_code()
         room_ref = db.collection("rooms").document()
         invite_ref = db.collection("room_invites").document(code)
         now = datetime.now(timezone.utc)
@@ -360,6 +362,7 @@ def create_room(body: CreateRoomRequest, user: Annotated[dict, Depends(current_u
             "title": body.title,
             "owner_uid": uid,
             "member_uids": [uid],
+            "max_members": body.max_members,
             "invite_code": code,
             "created_at": now,
             "updated_at": now,
@@ -404,11 +407,13 @@ def _join_room_tx(tx, invite_ref, uid):
     snap = room_ref.get(transaction=tx)
     if not snap.exists:
         raise HTTPException(404, "약속 방이 존재하지 않습니다.")
-    members = list(snap.to_dict().get("member_uids", []))
+    room = snap.to_dict() or {}
+    members = list(room.get("member_uids", []))
     if uid in members:
         return room_id, False
-    if len(members) >= 30:
-        raise HTTPException(409, "약속 방 최대 인원(30명)에 도달했습니다.")
+    max_members = get_room_max_members(room)
+    if len(members) >= max_members:
+        raise HTTPException(409, f"약속 방 최대 인원({max_members}명)에 도달했습니다.")
     tx.update(room_ref, {"member_uids": members + [uid], "updated_at": datetime.now(timezone.utc)})
     confirmed = (snap.to_dict() or {}).get("confirmed_appointment")
     if confirmed:
@@ -445,7 +450,7 @@ async def save_preferences(
     user: Annotated[dict, Depends(current_user)],
     regenerate: bool = Query(default=True, description="입력 변경 후 AI 코스 자동 재생성"),
 ):
-    _member_room(room_id, user["uid"])
+    room = _member_room(room_id, user["uid"]).to_dict() or {}
     ref = db.collection("rooms").document(room_id).collection("preferences").document(user["uid"])
     previous = ref.get()
     pref = {
@@ -457,11 +462,24 @@ async def save_preferences(
         "start_time": body.start_time.isoformat(timespec="minutes"),
         "end_time": body.end_time.isoformat(timespec="minutes"),
         "activities": body.activities,
+        "additional_notes": body.additional_notes,
         "updated_at": datetime.now(timezone.utc),
     }
-    meaningful_keys = ("budget", "region", "departure_location", "available_date", "start_time", "end_time", "activities")
+    meaningful_keys = ("budget", "region", "departure_location", "available_date", "start_time", "end_time", "activities", "additional_notes")
     old = previous.to_dict() or {}
-    changed = not previous.exists or any(old.get(k) != pref[k] for k in meaningful_keys)
+    changed = not previous.exists or any(old.get(k, "" if k == "additional_notes" else None) != pref[k] for k in meaningful_keys)
+    # A member can submit initial preferences, but only the owner can edit immediately.
+    # Member edits become unanimous-vote proposals; the existing preferences remain active.
+    if changed and previous.exists and room.get("owner_uid") != user["uid"]:
+        proposal_ref = db.collection("rooms").document(room_id).collection("shared_decisions").document()
+        proposal = _new_change_proposal(
+            proposal_ref.id, room, user["uid"], "preference_update",
+            {"proposed_preferences": pref, "base_preference_revision": _pref_revision(old)},
+        )
+        proposal_ref.create(proposal)
+        return {"room_id": room_id, "changed": False, "proposal_created": True,
+                "decision": proposal, "recommendation_status": "awaiting_votes",
+                "message": "조건 수정안을 제출했습니다. 전원 동의 후 반영됩니다."}
     if changed:
         ref.set(pref)
     result = {"message": "약속 조건을 저장했습니다.", "room_id": room_id, "changed": changed}
@@ -667,7 +685,8 @@ def _collect_constraints(room_id: str, uid: str) -> dict:
         'meeting_region': meeting_region if mode == 'fixed' else None,
         'preferences': [
             {'region': p['region'], 'departure_location': p.get('departure_location') or p['region'],
-             'activities': p['activities'], 'budget': p['budget']}
+             'activities': p['activities'], 'budget': p['budget'],
+             'additional_notes': p.get('additional_notes', '')}
             for p in prefs
         ],
     }
@@ -687,9 +706,11 @@ def _collect_constraints(room_id: str, uid: str) -> dict:
     decisions.sort(key=lambda d: (str(d.get('approved_at', '')), d.get('decision_id', '')))
     conditions['shared_decisions'] = [
         {'change_type': d['change_type'], 'from_activity': d.get('from_activity'),
-         'to_activity': d['to_activity'], 'decision_id': d['decision_id']}
-        for d in decisions
+         'to_activity': d.get('to_activity'), 'additional_notes': d.get('additional_notes', ''),
+         'decision_id': d['decision_id']}
+        for d in decisions if d.get('change_type') in ('replace', 'add', 'notes')
     ]
+    conditions['appointment_additional_notes'] = (room.get('confirmed_appointment') or {}).get('additional_notes', '')
     # Used to detect changes during a slow Gemini call.
     conditions['source_revision'] = _conditions_revision(room, prefs, conditions['shared_decisions'], personalized)
     return conditions
@@ -702,9 +723,10 @@ def _conditions_revision(room: dict, prefs: list[dict], shared_decisions: list[d
         'meeting_region': room.get('meeting_region', ''),
         'shared_decisions': shared_decisions or [],
         'member_personalization': personalization or [],
+        'appointment_additional_notes': (room.get('confirmed_appointment') or {}).get('additional_notes', ''),
         'prefs': sorted([
             {k: p.get(k) for k in ('uid', 'budget', 'region', 'departure_location',
-                                   'available_date', 'start_time', 'end_time', 'activities')}
+                                   'available_date', 'start_time', 'end_time', 'activities', 'additional_notes')}
             for p in prefs
         ], key=lambda p: p['uid'] or ''),
     }
@@ -769,6 +791,8 @@ def _build_search_queries(conditions: dict) -> list[str]:
     # Search approved new activities before original personal preferences.
     words = []
     for d in reversed(decisions):
+        if d.get('change_type') not in ('replace', 'add'):
+            continue
         activity = d['to_activity'].strip()
         if activity.casefold() not in {w.casefold() for w in words}:
             words.append(activity)
@@ -836,7 +860,8 @@ def _check_and_enrich(plan: VerifiedCoursePlan, conditions: dict, candidates: li
         if d['change_type'] == 'replace' and d.get('from_activity'):
             removed.add(d['from_activity'].casefold())
             required.pop(d['from_activity'].casefold(), None)
-        required[d['to_activity'].casefold()] = d['to_activity']
+        if d.get('change_type') in ('replace', 'add') and d.get('to_activity'):
+            required[d['to_activity'].casefold()] = d['to_activity']
     for required_activity in required.values():
         needle = required_activity.casefold()
         if not any(needle in (s['activity'] + ' ' + s['name'] + ' ' + s['category']).casefold() for s in stops):
@@ -876,6 +901,8 @@ async def _openrouter_course(conditions: dict, candidates: list[dict]) -> dict:
         '만남 지역은 conditions.meeting_area를 따르고 그곳 중심 5km 내 후보에서만 고르세요. '
         'conditions.shared_decisions는 전체 참여자가 이번 약속에 적용하기로 정한 결정입니다. '
         '개인 선호보다 우선하며, 승인된 활동을 반드시 일정에 포함하세요. '
+        'preferences.additional_notes, shared_decisions.additional_notes, appointment_additional_notes는 자유 서술 요구사항입니다. '
+        '이 문구까지 고려해 일정과 장소를 추천하되, 안전성·공통 가능 시간·예산·실제 장소 후보 제약과 충돌하면 그 제약을 우선하세요. '
         'member_personalization은 참여자가 입력한 선택적 선호입니다. 실내외 활동, 음주, 교통 이동 제약을 추천에 참고하세요. '
         'MBTI만으로 성격을 단정하지 말고, 예산·공통 날짜·명시적 약속 조건보다 낮은 우선순위로 적용하세요. '
         'replace 결정은 from_activity를 제외하고 to_activity로 바꿉니다. '
@@ -1000,7 +1027,7 @@ def get_recommendation(room_id: str, user: Annotated[dict, Depends(current_user)
     return result
 
 
-# -------------------- Meeting area control + room chat --------------------
+# -------------------- Meeting area control --------------------
 
 from typing import Literal
 
@@ -1025,11 +1052,18 @@ async def change_meeting_setting(
 ):
     snapshot = _member_room(room_id, user['uid'])
     room = snapshot.to_dict() or {}
-    if room.get('owner_uid') != user['uid']:
-        raise HTTPException(403, '약속 지역 설정은 방장만 변경할 수 있습니다.')
     changed = room.get('meeting_mode', 'middle') != body.mode or (
         (room.get('meeting_region') or None) != (body.region if body.mode == 'fixed' else None)
     )
+    if changed and room.get('owner_uid') != user['uid']:
+        ref = snapshot.reference.collection('shared_decisions').document()
+        proposal = _new_change_proposal(ref.id, room, user['uid'], 'meeting_update',
+                                        {'meeting_mode': body.mode, 'meeting_region': body.region if body.mode == 'fixed' else None,
+                                         'base_meeting_mode': room.get('meeting_mode', 'middle'),
+                                         'base_meeting_region': room.get('meeting_region')})
+        ref.create(proposal)
+        return {'room_id': room_id, 'changed': False, 'proposal_created': True,
+                'decision': proposal, 'recommendation_status': 'awaiting_votes'}
     if changed:
         snapshot.reference.update({
             'meeting_mode': body.mode,
@@ -1049,61 +1083,49 @@ async def change_meeting_setting(
     return result
 
 
-class ChatMessageRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=1000)
-
-    @model_validator(mode='after')
-    def check_text(self):
-        self.text = self.text.strip()
-        if not self.text:
-            raise ValueError('빈 채팅 메시지는 보낼 수 없습니다.')
-        return self
-
-
-@app.post('/rooms/{room_id}/messages', status_code=201, tags=['Chat'])
-def send_room_message(room_id: str, body: ChatMessageRequest,
-                      user: Annotated[dict, Depends(current_user)]):
-    room = _member_room(room_id, user['uid'])
-    ref = room.reference.collection('messages').document()
-    message = {'message_id': ref.id, 'uid': user['uid'], 'text': body.text,
-               'created_at': datetime.now(timezone.utc)}
-    ref.set(message)
-    # General chat does NOT consume Gemini calls.
-    return message
-
-
-@app.get('/rooms/{room_id}/messages', tags=['Chat'])
-def get_room_messages(room_id: str, user: Annotated[dict, Depends(current_user)],
-                      limit: int = Query(default=50, ge=1, le=100)):
-    room = _member_room(room_id, user['uid'])
-    docs = (room.reference.collection('messages')
-            .order_by('created_at', direction=firestore.Query.DESCENDING)
-            .limit(limit).stream())
-    messages = [doc.to_dict() for doc in docs]
-    messages.reverse()
-    return {'room_id': room_id, 'messages': messages, 'count': len(messages)}
-
-
-
 # -------------------- Room-wide decisions (instant / unanimous approval) --------------------
 
 class RoomDecisionRequest(BaseModel):
-    mode: Literal['instant', 'approval']
-    change_type: Literal['replace', 'add'] = 'replace'
+    mode: Literal['instant', 'approval'] = 'approval'  # accepted for old Flutter clients
+    change_type: Literal['replace', 'add', 'notes'] = 'replace'
     from_activity: str | None = Field(default=None, max_length=40)
-    to_activity: str = Field(min_length=1, max_length=40)
+    to_activity: str | None = Field(default=None, max_length=40)
+    additional_notes: str = Field(default='', max_length=1000, description='일정 수정에 반영할 자유 서술 기타 사항')
 
     @model_validator(mode='after')
     def validate_change(self):
-        self.to_activity = self.to_activity.strip()
+        self.to_activity = (self.to_activity or '').strip() or None
         self.from_activity = (self.from_activity or '').strip() or None
-        if not self.to_activity:
+        self.additional_notes = self.additional_notes.strip()
+        if self.change_type == 'notes':
+            if not self.additional_notes:
+                raise ValueError('기타 사항을 입력하세요.')
+        elif not self.to_activity:
             raise ValueError('변경할 활동을 입력하세요.')
         if self.change_type == 'replace' and not self.from_activity:
             raise ValueError('교체할 기존 활동(from_activity)을 입력하세요.')
-        if self.from_activity and self.from_activity.casefold() == self.to_activity.casefold():
+        if self.from_activity and self.to_activity and self.from_activity.casefold() == self.to_activity.casefold():
             raise ValueError('변경 전후 활동이 동일합니다.')
         return self
+
+
+def _pref_revision(pref: dict) -> str:
+    """Stable content fingerprint; excludes volatile timestamps."""
+    keys = ('budget', 'region', 'departure_location', 'available_date',
+            'start_time', 'end_time', 'activities', 'additional_notes')
+    return hashlib.sha256(json.dumps({key: pref.get(key) for key in keys}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def _new_change_proposal(decision_id: str, room: dict, uid: str, change_type: str, details: dict) -> dict:
+    members = list(room.get('member_uids', []))
+    if uid not in members:
+        raise HTTPException(403, '현재 방 참가자만 변경을 요청할 수 있습니다.')
+    now = datetime.now(timezone.utc)
+    return {
+        'decision_id': decision_id, 'mode': 'approval', 'change_type': change_type,
+        'created_by': uid, 'created_at': now, 'approved_at': None,
+        'status': 'pending', 'voters': members, 'votes': {uid: True}, **details,
+    }
 
 
 class DecisionVoteRequest(BaseModel):
@@ -1132,20 +1154,14 @@ async def propose_room_decision(
         raise HTTPException(409, '참여자가 없는 방입니다.')
     ref = room.reference.collection('shared_decisions').document()
     now = datetime.now(timezone.utc)
-    approved = body.mode == 'instant'
-    decision = {
-        'decision_id': ref.id,
-        'mode': body.mode,
-        'change_type': body.change_type,
-        'from_activity': body.from_activity,
-        'to_activity': body.to_activity,
-        'created_by': user['uid'],
-        'created_at': now,
-        'approved_at': now if approved else None,
-        'status': 'approved' if approved else 'pending',
-        'voters': list(members),
-        'votes': {user['uid']: True},  # proposer automatically approves
-    }
+    approved = room.to_dict().get('owner_uid') == user['uid']
+    decision = _new_change_proposal(
+        ref.id, room.to_dict() or {}, user['uid'], body.change_type,
+        {'from_activity': body.from_activity, 'to_activity': body.to_activity,
+         'additional_notes': body.additional_notes},
+    )
+    if approved:
+        decision.update({'mode': 'instant', 'approved_at': now, 'status': 'approved'})
     try:
         ref.create(decision)
     except GoogleAPICallError:
@@ -1185,6 +1201,20 @@ def _cast_decision_vote(tx, room_ref, decision_ref, uid: str, approve: bool):
     updates = {'votes': votes, 'status': new_status}
     if new_status == 'approved':
         updates['approved_at'] = datetime.now(timezone.utc)
+    if new_status == 'approved' and decision.get('change_type') == 'preference_update':
+        pref_ref = room_ref.collection('preferences').document(decision['created_by'])
+        pref_snap = pref_ref.get(transaction=tx)
+        if not pref_snap.exists or _pref_revision(pref_snap.to_dict() or {}) != decision.get('base_preference_revision'):
+            raise HTTPException(409, '제안 이후 조건이 변경되었습니다. 새로운 수정안을 제출하세요.')
+        tx.set(pref_ref, decision['proposed_preferences'])
+    if new_status == 'approved' and decision.get('change_type') == 'meeting_update':
+        live_room = room_snap.to_dict() or {}
+        if (live_room.get('meeting_mode', 'middle') != decision.get('base_meeting_mode') or
+                live_room.get('meeting_region') != decision.get('base_meeting_region')):
+            raise HTTPException(409, '제안 이후 만남 지역 설정이 변경되었습니다. 새 수정안을 제출하세요.')
+        tx.update(room_ref, {'meeting_mode': decision['meeting_mode'],
+                             'meeting_region': decision.get('meeting_region'),
+                             'updated_at': datetime.now(timezone.utc)})
     tx.update(decision_ref, updates)
     decision.update(updates)
     return decision

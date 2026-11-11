@@ -1,4 +1,5 @@
 from copy import deepcopy
+from uuid import uuid4
 from datetime import datetime, timezone
 
 import pytest
@@ -36,6 +37,11 @@ class Ref:
             for key, value in values.items()
         }
 
+    def create(self, values):
+        if self.path in self.db.docs:
+            raise ValueError("duplicate")
+        self.set(values)
+
     def set(self, values):
         self.db.docs[self.path] = self.normalized(values)
 
@@ -49,8 +55,8 @@ class Collection:
         self.path = path
         self.count = 200
 
-    def document(self, name):
-        return Ref(self.db, self.path + "/" + name)
+    def document(self, name=None):
+        return Ref(self.db, self.path + "/" + (name or uuid4().hex))
 
     def limit(self, count):
         self.count = count
@@ -134,7 +140,9 @@ def test_date_change_updates_each_member_and_blocks_stale(setup_app):
     client, db, who = setup_app
     client.post("/rooms/r1/appointment/confirm", json={"recommendation_revision": "revision1"})
     who["uid"] = "bob"
-    assert client.patch("/rooms/r1/appointment/date", json={"date": "2026-11-20", "version": 1}).status_code == 403
+    proposal = client.patch("/rooms/r1/appointment/date", json={"date": "2026-11-20", "version": 1})
+    assert proposal.status_code == 200 and proposal.json()["proposal_created"]
+    assert db.docs["rooms/r1"]["confirmed_appointment"]["version"] == 1
     who["uid"] = "alice"
     changed = client.patch("/rooms/r1/appointment/date", json={"date": "2026-11-20", "version": 1})
     assert changed.status_code == 200, changed.text
@@ -161,3 +169,92 @@ def test_history_is_scoped_to_current_user(setup_app):
     data = client.get("/mypage/appointments").json()["appointments"]
     assert len(data) == 1
     assert all(item["uid"] == "bob" for item in data)
+
+
+def test_date_availability_reports_unknown_and_conflicting_members(setup_app):
+    client, db, who = setup_app
+    db.docs["rooms/r1/preferences/alice"] = {"available_date": "2026-11-20"}
+    response = client.get("/rooms/r1/appointment/date-availability", params={"date": "2026-11-20"})
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["available_count"] == 1
+    assert data["all_available"] is False
+    assert data["requires_member_confirmation"] is True
+    assert [member["status"] for member in data["members"]] == ["available", "missing"]
+    db.docs["rooms/r1/preferences/bob"] = {"available_date": "2026-11-25"}
+    data = client.get("/rooms/r1/appointment/date-availability", params={"date": "2026-11-20"}).json()
+    assert [member["status"] for member in data["members"]] == ["available", "different_date"]
+    who["uid"] = "outsider"
+    assert client.get("/rooms/r1/appointment/date-availability", params={"date": "2026-11-20"}).status_code == 403
+
+
+def test_date_change_strict_mode_rejects_unavailable_members(setup_app):
+    client, db, who = setup_app
+    assert client.post("/rooms/r1/appointment/confirm", json={"recommendation_revision": "revision1"}).status_code == 200
+    db.docs["rooms/r1/preferences/alice"] = {"available_date": "2026-11-20"}
+    blocked = client.patch("/rooms/r1/appointment/date?require_all_available=true", json={"date": "2026-11-20", "version": 1})
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["detail"]["availability"]["available_count"] == 1
+    assert db.docs["rooms/r1"]["confirmed_appointment"]["version"] == 1
+    db.docs["rooms/r1/preferences/bob"] = {"available_date": "2026-11-20"}
+    response = client.patch("/rooms/r1/appointment/date?require_all_available=true", json={"date": "2026-11-20", "version": 1})
+    assert response.status_code == 200, response.text
+    assert response.json()["availability"]["all_available"] is True
+    assert response.json()["appointment"]["version"] == 2
+
+
+def test_date_change_to_same_day_does_not_require_refresh(setup_app):
+    client, db, who = setup_app
+    client.post("/rooms/r1/appointment/confirm", json={"recommendation_revision": "revision1"})
+    response = client.patch("/rooms/r1/appointment/date", json={"date": "2026-11-15", "version": 1})
+    assert response.status_code == 200, response.text
+    assert response.json()["recommendation_needs_refresh"] is False
+    assert response.json()["appointment"]["version"] == 1
+
+
+def test_non_owner_date_change_requires_unanimous_approval_and_includes_notes(setup_app):
+    client, db, who = setup_app
+    assert client.post('/rooms/r1/appointment/confirm', json={'recommendation_revision': 'revision1'}).status_code == 200
+    who['uid'] = 'bob'
+    request = client.patch('/rooms/r1/appointment/date', json={
+        'date': '2026-11-22', 'version': 1,
+        'additional_notes': '조용한 카페 위주로, 계단 없는 곳 선호',
+    })
+    assert request.status_code == 200, request.text
+    req_id = request.json()['date_change_request']['request_id']
+    assert db.docs['rooms/r1']['confirmed_appointment']['date'] == '2026-11-15'
+    who['uid'] = 'alice'
+    approved = client.post(f'/rooms/r1/appointment/date-requests/{req_id}/vote', json={'approve': True})
+    assert approved.status_code == 200, approved.text
+    assert approved.json()['date_change_request']['status'] == 'approved'
+    assert approved.json()['recommendation_needs_refresh'] is True
+    assert db.docs['rooms/r1']['confirmed_appointment']['date'] == '2026-11-22'
+    assert db.docs['rooms/r1']['confirmed_appointment']['additional_notes'] == '조용한 카페 위주로, 계단 없는 곳 선호'
+    assert db.docs['users/bob/appointment_history/r1']['additional_notes'] == '조용한 카페 위주로, 계단 없는 곳 선호'
+    assert client.post(f'/rooms/r1/appointment/date-requests/{req_id}/vote', json={'approve': True}).status_code == 409
+
+
+def test_reject_date_request_preserves_existing_appointment(setup_app):
+    client, db, who = setup_app
+    client.post('/rooms/r1/appointment/confirm', json={'recommendation_revision': 'revision1'})
+    who['uid'] = 'bob'
+    request = client.patch('/rooms/r1/appointment/date', json={'date': '2026-11-25', 'version': 1})
+    req_id = request.json()['date_change_request']['request_id']
+    who['uid'] = 'alice'
+    rejected = client.post(f'/rooms/r1/appointment/date-requests/{req_id}/vote', json={'approve': False})
+    assert rejected.status_code == 200
+    assert rejected.json()['date_change_request']['status'] == 'rejected'
+    assert db.docs['rooms/r1']['confirmed_appointment']['version'] == 1
+
+
+def test_owner_can_change_appointment_notes_immediately(setup_app):
+    client, db, who = setup_app
+    client.post('/rooms/r1/appointment/confirm', json={'recommendation_revision': 'revision1'})
+    revised = client.patch('/rooms/r1/appointment/date', json={
+        'date': '2026-11-15', 'version': 1,
+        'additional_notes': '식당은 매운 음식 제외',
+    })
+    assert revised.status_code == 200, revised.text
+    assert revised.json()['appointment']['version'] == 2
+    assert revised.json()['appointment']['additional_notes'] == '식당은 매운 음식 제외'
+    assert revised.json()['recommendation_needs_refresh'] is True

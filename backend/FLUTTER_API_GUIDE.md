@@ -102,22 +102,22 @@ Content-Type: application/json
 
 | 화면 / 버튼 | 메서드·경로 | 입력 / 응답 |
 | --- | --- | --- |
-| 방 만들기 | POST `/rooms` | `{"title":"주말 약속","max_members":3}` → `room_id`, `invite_code` |
+| 방 만들기 | POST `/rooms` | `{"title":"주말 약속","max_members":3}` → `room_id`, **7자리** `invite_code` |
 | 내 방 목록 | GET `/rooms` | `rooms`, `count` |
-| 방 상세 | GET `/rooms/{room_id}` | `member_uids`, `owner_uid`, `members` |
-| 초대코드로 참여 | POST `/rooms/join` | `{"invite_code":"ABCDEFGH"}` |
+| 방 상세 | GET `/rooms/{room_id}` | `member_uids`, `owner_uid`, `members`, `max_members`, `member_count` |
+| 초대코드로 참여 | POST `/rooms/join` | `{"invite_code":"AB2#C@!"}` (신규: 영문·숫자·`#@!` 포함 7자리; 이전 영숫자 7~8자리 호환) |
 | 내가 입력한 약속 조건 저장 | POST `/rooms/{room_id}/preferences` | 아래 예시 |
 | 참가자별 조건 조회 | GET `/rooms/{room_id}/preferences` | `members`, `submitted_count`, `total_members` |
-| 만남 위치 방식 변경 | PATCH `/rooms/{room_id}/meeting` | `{"mode":"middle"}` 또는 `{"mode":"fixed","region":"강남역"}`; 방장만 |
+| 만남 위치 방식 변경 | PATCH `/rooms/{room_id}/meeting` | `{"mode":"middle"}` 또는 `{"mode":"fixed","region":"강남역"}`; 방장 즉시 변경, 일반 참여자 전원 동의 제안 |
 | 장소 검색 | GET `/places/search?query=강남역%20카페` | `places`, `count` |
 | AI 추천 생성 | POST `/rooms/{room_id}/recommend` | `plan`, `source_revision`, `meeting_area` 등 |
 | AI 추천 조회 | GET `/rooms/{room_id}/recommendation` | `plan`, `source_revision`, `is_stale` |
 | 방에서 나가기 | DELETE `/rooms/{room_id}/members/me` | `message`, `room_deleted` |
-| 방 채팅 보내기 | POST `/rooms/{room_id}/messages` | `{"text":"여기서 만날까요?"}` |
-| 방 채팅 읽기 | GET `/rooms/{room_id}/messages?limit=50` | `messages`, `count` |
 | 활동 변경 제안 | POST `/rooms/{room_id}/decisions` | 아래 설명 |
 | 변경안 동의/거절 | POST `/rooms/{room_id}/decisions/{decision_id}/vote` | `{"approve":true}` 또는 `false` |
-| 변경안 목록 | GET `/rooms/{room_id}/decisions` | `decisions` |
+| 변경안 목록 | GET `/rooms/{room_id}/decisions` | `decisions` (`pending`, `approved`, `rejected`) |
+
+**방 최대 인원:** 생성 시 `max_members`를 2~8명으로 설정할 수 있으며, 실제 방 참여 API도 그 수를 초과하면 HTTP 409를 반환합니다. 방 목록/상세 응답의 `max_members`로 정원 여부를 표시하세요. 기존에 생성되어 정원 필드가 없는 방은 8명으로 취급합니다.
 
 약속 조건 저장 예시:
 
@@ -129,11 +129,12 @@ Content-Type: application/json
   "start_time": "12:00",
   "end_time": "17:00",
   "activities": ["카페", "전시"],
-  "departure_location": "사당역"
+  "departure_location": "사당역",
+  "additional_notes": "조용한 곳 선호, 비건 메뉴가 있는 식당, 계단이 적은 동선"
 }
 ```
 
-`POST /rooms/{room_id}/preferences`는 기본적으로 `?regenerate=true`이며 조건 변경 시 AI 추천을 시도합니다. 참가자들이 조건을 모두 제출하지 않았거나 공통 날짜·시간이 맞지 않으면 `recommendation_status: "pending"`과 설명이 돌아올 수 있습니다. **조건 저장 성공과 추천 생성 성공은 별개**입니다. 예산은 **1인 기준 원화 정수**입니다.
+`POST /rooms/{room_id}/preferences`는 **최초 입력 시 참가자 누구나 즉시 저장**합니다. 이후 **방장이 자기 조건을 수정하면 즉시 반영**, 일반 참여자가 자기 조건을 수정하면 `proposal_created: true`, `decision.status: pending`을 반환하고 기존 조건은 유지됩니다. 이 제안은 `POST /rooms/{room_id}/decisions/{decision_id}/vote`에서 **전원 찬성한 후** 반영됩니다. 거절 1표면 반영되지 않습니다. 실제 조건 반영 후 기본적으로 `?regenerate=true`이면 AI 추천을 시도합니다. 참가자들이 조건을 모두 제출하지 않았거나 공통 날짜·시간이 맞지 않으면 `recommendation_status: "pending"`과 설명이 돌아올 수 있습니다. **조건 저장 성공과 추천 생성 성공은 별개**입니다. 예산은 **1인 기준 원화 정수**입니다.
 
 변경안 예시:
 
@@ -142,11 +143,14 @@ Content-Type: application/json
   "mode": "approval",
   "change_type": "replace",
   "from_activity": "카페",
-  "to_activity": "전시"
+  "to_activity": "전시",
+  "additional_notes": "사람이 너무 붐비지 않는 장소를 골라줘"
 }
 ```
 
-`mode`는 `instant`(즉시 반영) 또는 `approval`(참여자 투표), `change_type`은 `replace` 또는 `add`입니다. `replace`는 `from_activity`가 필수입니다.
+`mode`는 하위 호환성을 위해 요청에 남아 있지만 **실제 적용은 서버가 권한으로 결정**합니다. 방장은 언제나 즉시 승인, 일반 참여자는 `mode: instant`를 보내도 전원 승인 투표로 전환됩니다. `change_type`은 `replace`(기존 활동 교체), `add`(활동 추가), `notes`(기타 사항만 추가)입니다. `replace`는 `from_activity`가 필수이며 `notes`는 `additional_notes`가 필수입니다. 일반 참여자의 활동 변경 제안, 조건 수정, 만남 지역 변경 모두 `/decisions` 투표를 사용합니다.
+
+`additional_notes`는 1000자 이하 자유 서술이며 AI 추천의 입력과 추천 버전 비교에 포함됩니다. 사용자가 써 둔 모든 요구 사항이 항상 실현되는 것은 아니고, 공통 시간·예산·장소 후보 제한을 우선합니다. **채팅 API는 제거되었습니다.**
 
 현재 GitHub의 추천 코드는 **OpenRouter**를 사용하며, 카카오맵은 장소 후보 검색용입니다. 프론트엔드에서는 Gemini API나 OpenRouter API의 **비밀키를 직접 다루지 않고** 위의 백엔드 API만 호출합니다.
 
@@ -158,7 +162,10 @@ Content-Type: application/json
 | --- | --- | --- |
 | 추천 확정 | POST `/rooms/{room_id}/appointment/confirm` | `{"recommendation_revision":"..."}`; 추천 조회 응답의 `source_revision` 그대로 사용. 방장만 |
 | 확정된 약속 보기 | GET `/rooms/{room_id}/appointment` | `{"room_id":"...","appointment": {...}}` 또는 `appointment: null` |
-| 확정 약속 날짜 변경 | PATCH `/rooms/{room_id}/appointment/date` | `{"date":"2026-11-20","version":1}`; 방장만 |
+| 날짜 변경 가능 여부 확인 | GET `/rooms/{room_id}/appointment/date-availability?date=2026-11-20` | 참여자별 저장 가능 날짜 일치 여부와 미입력자 표시. 방 참가자 모두 조회 가능 |
+| 확정 약속 날짜 변경·기타 요청 | PATCH `/rooms/{room_id}/appointment/date` | `{"date":"2026-11-20","version":1,"additional_notes":"조용한 카페 중심"}`; 방장은 즉시 변경, 일반 참여자는 전원 동의 요청. 방장만 `?require_all_available=true` 검증 가능 |
+| 날짜 변경 투표 | POST `/rooms/{room_id}/appointment/date-requests/{request_id}/vote` | `{"approve":true}`/`false`; 참여자 전원 찬성 시 날짜·기타 사항 반영 |
+| 날짜 변경 요청 조회 | GET `/rooms/{room_id}/appointment/date-requests` | `requests` 목록 및 각 요청의 `votes`, `status` |
 | 캘린더에 확정 약속 표시 | GET `/calendar/confirmed-appointments` | `events`: `id`, `room_id`, `title`, `starts_at`, `ends_at`, `source: "meeting"`, `version` |
 | 마이페이지 약속 내역 | GET `/mypage/appointments` | `appointments`, `count`; 나간 방은 `status: "left"`로 보존 |
 | 개인 일정 월/기간 조회 | GET `/calendar/events?starts_from=2026-11-01T00:00:00%2B09:00&starts_before=2026-12-01T00:00:00%2B09:00` | `events` |
@@ -184,7 +191,10 @@ Content-Type: application/json
 - `starts_from`과 `starts_before`에는 **시간대가 포함된 ISO 8601** 날짜·시간이 필수입니다. `+`는 URL에서 `%2B`로 인코딩하세요. 최대 조회 범위는 약 1년입니다.
 - 확정 약속의 `id`는 `meeting:<room_id>` 형식입니다. **이 ID를 개인 일정 수정/삭제 API에 넣지 마세요.** 확정 약속의 날짜 변경은 `PATCH /rooms/{room_id}/appointment/date`, 나가기는 `DELETE /rooms/{room_id}/members/me`를 사용해야 다른 사람의 약속이 삭제되지 않습니다.
 - `version`은 수정 충돌 방지용 숫자입니다. 서버에서 받은 최신 버전을 그대로 보내세요. 이전 버전이면 HTTP 409가 발생하며, 화면에서 다시 조회하도록 안내합니다.
-- 날짜 변경 시 기존 AI 추천은 오래된 정보로 표시될 수 있습니다. 바뀐 날짜가 **모든 참가자에게 가능한지 확인하는 UI·동의 규칙은 아직 미완성**이며 현재 서버에서는 방장에게만 변경 권한을 부여합니다.
+- 날짜를 변경하기 전에 `GET /rooms/{room_id}/appointment/date-availability?date=YYYY-MM-DD`를 호출하세요. 각 참가자는 `status`가 `available`(저장된 가능 날짜 일치), `different_date`(다른 날짜 선택), `missing`(미입력) 중 하나로 반환됩니다. `all_available`이 `false`이면 프론트엔드에서 변경 전 경고할 수 있습니다.
+- 날짜 변경 요청에 `?require_all_available=true`를 붙이면 **모든 참가자의 저장된 가능 날짜가 일치하는 경우에만** 변경됩니다. 불일치/미입력 시 HTTP 409와 `detail.availability`를 반환합니다. 옵션을 생략하면 이전 API처럼 방장이 변경할 수 있으며, 응답의 `availability.requires_member_confirmation`으로 경고를 표시하세요.
+- **중요:** 저장된 가능 날짜의 일치 여부는 동의가 아닙니다. **방장이 직접 변경할 때는 즉시 처리**하고, 일반 참여자가 변경 요청한 경우 별도 `date-requests`에서 전원 찬성할 때만 실제 일정에 반영합니다. 거절 1표면 기각됩니다. 일반 참여자의 `PATCH` 응답은 `proposal_created: true`이며 확정 일정 자체는 그대로입니다.
+- 날짜가 실제로 변경되면 `recommendation_needs_refresh: true`를 반환하고 기존 AI 추천은 오래된 정보로 표시됩니다. 같은 날짜를 다시 전송하면 버전이 증가하지 않고 `recommendation_needs_refresh: false`입니다. 새 날짜의 코스는 자동 재생성되지 않습니다.
 
 ### 외부 휴대폰 캘린더 동기화 (선택 구현 단계)
 
@@ -232,12 +242,35 @@ FastAPI는 대체로 JSON을 반환하며, 실패 시 `{"detail":"오류 내용"
 ## 7. 아직 결정·구현이 필요한 부분
 
 - 서버 Base URL/실행 및 배포 환경
-- **추천 확정·날짜 변경 권한**: 현재 방장만 가능하게 구현한 잠정 정책, 다른 참가자의 동의 규칙은 팀 논의 필요
+- **추천 확정**은 방장만 가능. **조건/날짜 수정**은 방장 즉시 반영, 일반 참여자 전원 동의 필요. 투표 이후 Flutter 화면이 목록을 다시 조회해야 합니다.
 - 과거 약속 보관 방식: 현재 **방 하나당 최신 확정 약속 한 건** 기록, 같은 방에서 여러 번 약속 시 추가 설계 필요
-- 확정 날짜 변경 후 모든 참가자의 가능 날짜 재검증과 AI 코스 재추천
+- 일반 참여자 날짜 변경 요청에 대한 **명시적 전원 동의/거절** 구현. 단, 날짜가 변경되어도 AI 코스 자동 재생성은 미구현이며 `recommendation_needs_refresh: true`를 확인하고 새 코스를 요청해야 합니다.
 - 프로필 사진, 자기소개, 상세주소의 저장 API와 실제 스토리지
 - 팀 Gmail 주소 `SUPPORT_EMAIL`, 후원 URL `DEVELOPER_DONATION_URL` 설정
 - 외부 캘린더 실기기 연동, Firebase 실환경 및 AI·카카오 외부 호출 검증
 - 외부 호출 비용 및 무료 이용량 확인
 
 **이 문서는 동작 보증서가 아니라 현재 코드에 구현된 API를 연결하기 위한 계약서입니다.** 실제 연결 중 발견되는 오류와 미결정 요구사항은 백엔드 담당자에게 전달해 주세요.
+
+## 6. '기타 사항' Flutter 연결 (2026-11-11)
+
+현재 저장소 `lib/main.dart`는 Flutter 초기 예시 화면이며 실제 약속 방·일정 수정 폼이 들어 있지 않습니다. 해당 화면을 구현하는 팀원은 **선호 조건 최초 입력**과 **조건/활동 또는 확정 약속 수정** 양쪽에 자유 입력 텍스트 필드를 추가하세요.
+
+```dart
+TextFormField(
+  controller: additionalNotesController,
+  maxLines: 4,
+  maxLength: 1000,
+  decoration: const InputDecoration(
+    labelText: '기타 사항 (AI 추천에 반영)',
+    hintText: '예: 실내 위주, 조용한 장소, 비건 식당, 계단 없는 동선',
+  ),
+)
+```
+
+- 최초 선호 입력 및 개인 선호 수정: `POST /rooms/{room_id}/preferences` JSON에서 `additional_notes: additionalNotesController.text` 전달.
+- 방 내 활동 수정 / 기타 사항만 추가: `POST /rooms/{room_id}/decisions`의 `additional_notes` 전달. 기타 사항만 제안할 경우 `{"change_type":"notes","additional_notes":"..."}`.
+- 확정 약속 날짜 변경 또는 동일 날짜의 기타 사항 수정: `PATCH /rooms/{room_id}/appointment/date` JSON에 `additional_notes` 전달. 동일 날짜라도 기타 사항이 바뀌면 실제 변경으로 처리합니다.
+- 방장에게는 **즉시 반영** UI를, 일반 참여자에게는 **전원 동의 요청** UI를 표시하세요. 일반 참여자에게는 API 호출 후 `proposal_created`가 반환되므로 변경을 즉시 완료했다고 표시하면 안 됩니다.
+- `/rooms/{room_id}/decisions`와 `/rooms/{room_id}/appointment/date-requests`에서 투표 상태를 조회하고, 모든 구성원의 찬성을 받은 뒤에만 반영 결과를 새로 조회하세요.
+- 초대 코드 입력은 `#`, `@`, `!`를 모두 허용하는 일반 텍스트 입력으로 구현하고 URL path segment에 붙이지 마세요. 초대 코드는 `POST /rooms/join` JSON 본문으로 제출합니다.
