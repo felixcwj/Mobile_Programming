@@ -106,7 +106,13 @@ class PasswordRequest(BaseModel):
 
 async def firebase_password_login(email: str, password: str) -> dict:
     """Firebase Auth public REST API: verify password and return ID/refresh tokens."""
-    url = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+    emulator_host = os.getenv("FIREBASE_AUTH_EMULATOR_HOST", "").strip()
+    # Firebase Auth emulator accepts the same REST request without real credentials.
+    url = (
+        f"http://{emulator_host}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+        if emulator_host
+        else "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+    )
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.post(
