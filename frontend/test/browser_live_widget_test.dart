@@ -37,8 +37,16 @@ void main() {
     await tester.tap(find.widgetWithText(ElevatedButton, '로그인'));
 
     print('E2E_STAGE: login_clicked');
-    await settleNetwork(tester);
-    print('E2E_STAGE: after_login_wait');
+    for (var attempt = 0; attempt < 20; attempt++) {
+      await settleNetwork(tester);
+      if (find.byType(HomeScreen).evaluate().isNotEmpty) break;
+    }
+    final visibleText = tester.widgetList<Text>(find.byType(Text))
+        .map((item) => item.data)
+        .whereType<String>()
+        .take(35)
+        .toList();
+    print('E2E_STAGE: after_login_wait; home=${find.byType(HomeScreen).evaluate().length}; visible=$visibleText');
     expect(find.byType(HomeScreen), findsOneWidget,
         reason: 'User should reach the home screen only with a real Firebase token');
 
