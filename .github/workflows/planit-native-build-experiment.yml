@@ -4,7 +4,10 @@ on:
     branches:
       - experiment/wonjoon-planit-integration
     paths:
-      - 'frontend/**'
+      - 'frontend/lib/**'
+      - 'frontend/pubspec.yaml'
+      - 'frontend/pubspec.lock'
+      - 'frontend/tools/restore_upstream_assets.sh'
       - '.github/workflows/planit-native-build-experiment.yml'
   workflow_dispatch:
 
