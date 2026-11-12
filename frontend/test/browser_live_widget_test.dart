@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meetsync/screens/login_screen.dart';
 import 'package:meetsync/screens/home_screen.dart';
+import 'package:meetsync/screens/rooms/room_detail_screen.dart';
 import 'package:meetsync/services/planit_api.dart';
 
 Future<void> settleNetwork(WidgetTester tester) async {
@@ -73,6 +74,34 @@ void main() {
     final rooms = result?['rooms'] as List<dynamic>? ?? [];
     expect(rooms.any((room) => room is Map && room['title'] == 'Browser E2E outing'), true,
         reason: 'Room creation UI must persist to the actual Firestore emulator');
+
+    final createdRoom = rooms.firstWhere(
+        (room) => room is Map && room['title'] == 'Browser E2E outing') as Map;
+    final roomId = createdRoom['room_id'].toString();
+    print('E2E_STAGE: before_room_schedule');
+    await tester.tap(find.widgetWithText(ElevatedButton, '확인'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Browser E2E outing').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(RoomDetailScreen), findsOneWidget);
+    await tester.tap(find.text('약속 날짜 정하기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('선택').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('선택').last);
+    for (var attempt = 0; attempt < 20; attempt++) {
+      await settleNetwork(tester);
+      final events = await tester.runAsync(
+          () => PlanitApi.instance.request('GET', '/calendar/room-appointments'));
+      if ((events?['events'] as List<dynamic>? ?? [])
+          .any((event) => event is Map && event['room_id'] == roomId)) break;
+    }
+    final shared = await tester.runAsync(
+        () => PlanitApi.instance.request('GET', '/calendar/room-appointments'));
+    expect((shared?['events'] as List<dynamic>? ?? [])
+        .any((event) => event is Map && event['room_id'] == roomId), true,
+        reason: 'UI-picked room date must persist to official Firestore emulator');
+    print('E2E_STAGE: browser_schedule_saved');
     PlanitApi.instance.clearSession();
   });
 }
