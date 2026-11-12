@@ -67,7 +67,8 @@ void main() {
         onConfirmed: (_) => confirmedCount++),
     ));
     final confirm = find.text('이 코스로 약속 확정');
-    await tester.ensureVisible(confirm);
+    await tester.scrollUntilVisible(confirm, 180,
+      scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
     await tester.tap(confirm);
     await tester.pumpAndSettle();
@@ -76,7 +77,8 @@ void main() {
     expect(confirmedCount, 0);
     expect(controller.room('after-work').status, RoomStatus.recommended);
     expect(calls, isNot(contains('POST /rooms/after-work/appointment/confirm')));
-    await tester.ensureVisible(confirm);
+    await tester.scrollUntilVisible(confirm, 180,
+      scrollable: find.byType(Scrollable).first);
     await tester.tap(confirm);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '약속 확정'));
