@@ -196,6 +196,116 @@ assert all(h["status"] == "left" for h in history_b_left if h.get("room_id") == 
 assert len(request("GET", "/calendar/room-appointments", token=ta)["events"]) == 2
 checks.append("Leaving room hides personal shared calendar and preserves other member history")
 
+# --- Extended real SDK checks: MyPage, voting, privacy, recovery ---
+original_profile = request("GET", "/mypage/profile", token=ta)
+updated_profile = request("PUT", "/mypage/profile", token=ta, body={
+    "nickname": f"Verified{prefix}", "name": "Verified QA", "phone": "01012345678",
+})
+assert updated_profile["nickname"] == f"Verified{prefix}"
+assert request("GET", "/mypage/profile", token=ta)["nickname"] == f"Verified{prefix}"
+request("GET", "/mypage/profile", status=401)
+prefs_saved = request("PUT", "/mypage/preferences", token=ta, body={
+    "gender": "male", "birthday": "2003-12-28",
+    "mbti": "INTJ", "activity_preference": "indoor",
+    "alcohol_preference": 2, "neighborhood": "서울", "has_car": False,
+})
+assert prefs_saved["preferences"]["mbti"] == "INTJ"
+assert request("GET", "/mypage/preferences", token=ta)["preferences"]["has_car"] is False
+assert request("GET", "/mypage/preferences", token=tb)["preferences"] == {}
+checks.append("Live MyPage nickname update, private preferences and unauthorized request rejection")
+
+# A fresh two-member room exercises real Firestore transaction-based voting.
+vroom = request("POST", "/rooms", token=ta,
+                body={"title": "Voting QA meeting", "max_members": 2}, status=201)
+vrid = vroom["room_id"]
+request("POST", "/rooms/join", token=tb, body={"invite_code": vroom["invite_code"]})
+initial_preferences = {
+    "budget": 30000, "region": "홍대", "departure_location": "홍대",
+    "available_date": "2026-12-11", "start_time": "12:00", "end_time": "18:00",
+    "activities": ["카페", "산책"], "additional_notes": "조용한 장소",
+}
+for token in (ta, tb):
+    request("POST", f"/rooms/{vrid}/preferences", token=token,
+            params={"regenerate": "false"}, body=initial_preferences)
+
+proposed = request("POST", f"/rooms/{vrid}/preferences", token=tb,
+                   params={"regenerate": "false"},
+                   body={**initial_preferences, "budget": 55000})
+assert proposed["proposal_created"] is True and proposed["recommendation_status"] == "awaiting_votes"
+did = proposed["decision"]["decision_id"]
+listing = request("GET", f"/rooms/{vrid}/decisions", token=ta)["decisions"]
+assert any(d["decision_id"] == did for d in listing)
+before_vote = request("GET", f"/rooms/{vrid}/preferences", token=ta)
+assert before_vote["preferences"][b]["budget"] == 30000
+accepted = request("POST", f"/rooms/{vrid}/decisions/{did}/vote",
+                   token=ta, body={"approve": True})
+assert accepted["decision"]["status"] == "approved"
+assert request("GET", f"/rooms/{vrid}/preferences", token=ta)["preferences"][b]["budget"] == 55000
+request("POST", f"/rooms/{vrid}/decisions/{did}/vote",
+        token=ta, body={"approve": True}, status=409)
+checks.append("Real unanimous approval preserves old conditions until vote, then commits")
+
+rejected = request("POST", f"/rooms/{vrid}/preferences", token=tb,
+                   params={"regenerate": "false"},
+                   body={**initial_preferences, "budget": 65000})
+reject_id = rejected["decision"]["decision_id"]
+rejection = request("POST", f"/rooms/{vrid}/decisions/{reject_id}/vote",
+                    token=ta, body={"approve": False})
+assert rejection["decision"]["status"] == "rejected"
+assert request("GET", f"/rooms/{vrid}/preferences", token=ta)["preferences"][b]["budget"] == 55000
+checks.append("Real rejection refuses proposed changes without overwriting preferences")
+
+region_proposal = request("PATCH", f"/rooms/{vrid}/meeting", token=tb,
+                          params={"regenerate": "false"},
+                          body={"mode": "fixed", "region": "강남"})
+assert region_proposal["proposal_created"] is True
+region_id = region_proposal["decision"]["decision_id"]
+request("POST", f"/rooms/{vrid}/decisions/{region_id}/vote", token=ta,
+        body={"approve": True})
+room_after_vote = main.db.collection("rooms").document(vrid).get().to_dict()
+assert room_after_vote["meeting_mode"] == "fixed" and room_after_vote["meeting_region"] == "강남"
+checks.append("Member meeting-location proposal and owner approval use genuine Firestore transactions")
+
+# Seed AI output only; actual FastAPI confirm, date proposal, voting and
+# stored member histories use real Firestore transactions.
+constraints3 = main._collect_constraints(vrid, a)
+v_revision = constraints3["source_revision"]
+main.db.collection("rooms").document(vrid).collection("recommendations").document("latest").set({
+    "source_revision": v_revision,
+    "plan": {"title": "Voting test plan", "date": "2026-12-11",
+             "stops": [{"name": "QA stop", "start_time": "12:00",
+                        "end_time": "13:00", "place_id": "qa-stop"}]},
+})
+confirmed3 = request("POST", f"/rooms/{vrid}/appointment/confirm", token=ta,
+                     body={"recommendation_revision": v_revision})
+assert confirmed3["appointment"]["version"] == 1
+date_proposal = request("PATCH", f"/rooms/{vrid}/appointment/date", token=tb,
+                        body={"date": "2026-12-13", "version": 1})
+assert date_proposal["proposal_created"] is True
+assert request("GET", f"/rooms/{vrid}/appointment", token=ta)["appointment"]["date"] == "2026-12-11"
+date_id = date_proposal["date_change_request"]["request_id"]
+assert any(d["request_id"] == date_id for d in request("GET", f"/rooms/{vrid}/appointment/date-requests",
+                                                       token=ta)["requests"])
+date_vote = request("POST", f"/rooms/{vrid}/appointment/date-requests/{date_id}/vote",
+                    token=ta, body={"approve": True})
+assert date_vote["date_change_request"]["status"] == "approved"
+assert request("GET", f"/rooms/{vrid}/appointment", token=tb)["appointment"]["date"] == "2026-12-13"
+assert date_vote["recommendation_status"] in ("pending", "failed", "updated")
+request("POST", f"/rooms/{vrid}/appointment/date-requests/{date_id}/vote",
+        token=ta, body={"approve": True}, status=409)
+checks.append("Real member date-change voting updates both members' confirmed appointment safely")
+
+# Deletion is only scheduled after password reauthentication; cancellation restores edits.
+assert request("GET", "/mypage/deletion", token=tc)["status"] == "none"
+request("POST", "/mypage/deletion", token=tc, body={"password": "wrong"}, status=401)
+deleting = request("POST", "/mypage/deletion", token=tc, body={"password": password_c})
+assert deleting["status"] == "pending" and deleting["due_at"]
+assert request("GET", "/mypage/deletion", token=tc)["status"] == "pending"
+request("POST", "/mypage/deletion", token=tc, body={"password": password_c}, status=409)
+cancelled = request("DELETE", "/mypage/deletion", token=tc)
+assert cancelled["status"] == "none"
+checks.append("Real password-verified 30-day deletion request, duplicate protection and cancellation")
+
 print("REAL FIREBASE EMULATOR HTTP E2E PASSED")
 for i, result in enumerate(checks, start=1):
     print(f"  {i:02}. {result}")
