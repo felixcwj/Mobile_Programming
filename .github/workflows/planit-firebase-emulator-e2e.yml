@@ -5,6 +5,9 @@ on:
       - experiment/wonjoon-planit-integration
     paths:
       - 'backend/**'
+      - 'frontend/tool/live_api_e2e.dart'
+      - 'frontend/lib/services/planit_api.dart'
+      - 'frontend/pubspec.yaml'
       - '.github/workflows/planit-firebase-emulator-e2e.yml'
   workflow_dispatch:
 
