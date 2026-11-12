@@ -6,6 +6,7 @@ on:
     paths:
       - 'backend/**'
       - 'frontend/tool/live_api_e2e.dart'
+      - 'frontend/test/browser_live_widget_test.dart'
       - 'frontend/lib/services/planit_api.dart'
       - 'frontend/pubspec.yaml'
       - '.github/workflows/planit-firebase-emulator-e2e.yml'
@@ -40,4 +41,5 @@ jobs:
       - name: Run Firebase Auth + Firestore official emulators with real FastAPI
         env:
           PLANIT_E2E_RUN_DART: '1'
+          PLANIT_E2E_RUN_BROWSER: '1'
         run: npx -y firebase-tools@14 emulators:exec --config backend/e2e/firebase.json --project demo-planit-integration --only auth,firestore "bash backend/e2e/run_emulator_http.sh"
