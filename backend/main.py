@@ -10,6 +10,7 @@ import firebase_admin
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from firebase_admin import auth, credentials, firestore
 from google.api_core.exceptions import AlreadyExists
@@ -31,6 +32,23 @@ if not os.path.isfile(SERVICE_ACCOUNT):
 firebase_admin.initialize_app(credentials.Certificate(SERVICE_ACCOUNT))
 db = firestore.client()
 app = FastAPI(title="Plan It Firebase 인증 API", version="2.1.0")
+# Only the local Flutter development origins by default; override for a deployed UI.
+CORS_ORIGINS = [
+    value.strip()
+    for value in os.getenv(
+        "PLANIT_ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if value.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
+)
+
 security = HTTPBearer(auto_error=False)
 
 
