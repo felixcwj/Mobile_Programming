@@ -138,8 +138,12 @@ class RoomsController extends ChangeNotifier {
         when = DateTime.parse(event['starts_at'].toString()).toLocal();
         _scheduleVersions[id] = (event['version'] as num?)?.toInt() ?? 0;
       }
+      final submittedUids =
+          (value['submitted_uids'] as List<dynamic>? ?? []).map((uid) => uid.toString()).toSet();
       final members = (value['member_uids'] as List<dynamic>? ?? [])
-          .map((uid) => RoomMember(name: uid.toString(), submitted: false))
+          .map((uid) => RoomMember(
+              name: uid.toString(),
+              submitted: submittedUids.contains(uid.toString())))
           .toList();
       loaded.add(PlanRoom(
         id: id,
