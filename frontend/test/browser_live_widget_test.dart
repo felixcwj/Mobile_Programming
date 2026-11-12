@@ -18,6 +18,8 @@ void main() {
     const password = 'UITest_AA12345';
 
     // Firebase Admin/Auth emulator creates an actual user through FastAPI.
+    // Stage markers also surface in GitHub Actions Chrome test logs.
+    print('E2E_STAGE: before_signup');
     await tester.runAsync(() => PlanitApi.instance.signup(
       id: id,
       nickname: 'UiTest${id.substring(id.length - 4)}',
@@ -28,15 +30,19 @@ void main() {
       phone: '01012345678',
     ));
 
+    print('E2E_STAGE: after_signup');
     await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
     await tester.enterText(find.byType(TextField).at(0), id);
     await tester.enterText(find.byType(TextField).at(1), password);
     await tester.tap(find.widgetWithText(ElevatedButton, '로그인'));
 
+    print('E2E_STAGE: login_clicked');
     await settleNetwork(tester);
+    print('E2E_STAGE: after_login_wait');
     expect(find.byType(HomeScreen), findsOneWidget,
         reason: 'User should reach the home screen only with a real Firebase token');
 
+    print('E2E_STAGE: home_rendered');
     await tester.tap(find.text('약속방 시작하기'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('방 만들기'));
@@ -45,6 +51,7 @@ void main() {
     await tester.tap(find.byTooltip('방 생성 완료'));
     await settleNetwork(tester);
 
+    print('E2E_STAGE: create_room_wait_completed');
     expect(find.text('방이 만들어졌어요! 🎉'), findsOneWidget);
     final result = await tester.runAsync(
         () => PlanitApi.instance.request('GET', '/rooms'));
