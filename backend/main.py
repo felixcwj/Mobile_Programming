@@ -362,6 +362,8 @@ def _room_data(snap):
         "member_count": len(data.get("member_uids", [])),
         "max_members": get_room_max_members(data),
         "invite_code": data.get("invite_code"),
+        "meeting_mode": data.get("meeting_mode", "middle"),
+        "meeting_region": data.get("meeting_region"),
         "created_at": data.get("created_at"),
     }
 
