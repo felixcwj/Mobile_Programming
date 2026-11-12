@@ -197,6 +197,7 @@ class _EditPreferencesScreenState extends State<EditPreferencesScreen> {
                         key: const ValueKey('birthDate'),
                         controller: _birthDate,
                         maxLength: 10,
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
                         keyboardType: TextInputType.datetime,
                         decoration: const InputDecoration(
                           labelText: '생년월일',
