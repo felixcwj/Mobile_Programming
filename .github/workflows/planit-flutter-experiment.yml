@@ -29,9 +29,8 @@ jobs:
       - name: Test connected API and standalone profile UI
         working-directory: frontend
         run: flutter test test/api_integration_test.dart test/profile_test.dart test/profile_support_test.dart
-      - name: Check upstream legacy preview tests (non-blocking)
+      - name: Test authenticated app, calendar and room UI (required)
         working-directory: frontend
-        continue-on-error: true
         run: flutter test test/widget_test.dart test/calendar_test.dart test/rooms_test.dart
 
   backend-check:
