@@ -44,6 +44,10 @@ void main() {
       home: RoomPreferencesScreen(roomId: 'room1'),
     ));
     await tester.pumpAndSettle();
+    final error = find.textContaining('저장된 조건을 불러오지 못했습니다');
+    if (error.evaluate().isNotEmpty) {
+      fail(tester.widget<Text>(error).data ?? 'Unknown preference load error');
+    }
     expect(tester.widget<TextFormField>(
       find.byKey(const ValueKey('roomBudget'))).controller!.text, '17000');
     expect(tester.widget<TextFormField>(
