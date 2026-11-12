@@ -23,7 +23,6 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nickname;
-  late final TextEditingController _address;
   Uint8List? _photo;
   bool _saving = false;
   bool _picking = false;
@@ -32,14 +31,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void initState() {
     super.initState();
     _nickname = TextEditingController(text: widget.profile.nickname);
-    _address = TextEditingController(text: widget.profile.homeAddress);
     _photo = widget.profile.photoBytes;
   }
 
   @override
   void dispose() {
     _nickname.dispose();
-    _address.dispose();
     super.dispose();
   }
 
@@ -89,7 +86,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final latest = await widget.repository.load();
       final updated = latest.copyWith(
         nickname: _nickname.text.trim(),
-        homeAddress: _address.text.trim(),
         photoBytes: _photo,
         removePhoto: _photo == null,
       );
@@ -171,19 +167,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 ? '닉네임을 입력해 주세요.'
                                 : null,
                           ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            key: const ValueKey('homeAddress'),
-                            controller: _address,
-                            maxLength: 200,
-                            minLines: 1,
-                            maxLines: 3,
-                            decoration: const InputDecoration(
-                              labelText: '내 집 주소',
-                              hintText: '주소를 입력해 주세요',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
+
                         ],
                       ),
                     ),
