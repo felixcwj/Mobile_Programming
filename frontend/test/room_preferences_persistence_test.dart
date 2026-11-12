@@ -18,12 +18,12 @@ void main() {
         return http.Response(jsonEncode({'access_token': 'token', 'uid': 'tester'}), 200);
       }
       if (request.url.path == '/rooms/room1') {
-        return http.Response(jsonEncode({
+        return http.Response.bytes(utf8.encode(jsonEncode({
           'room_id': 'room1', 'meeting_mode': 'fixed', 'meeting_region': '강남역',
-        }), 200);
+        })), 200, headers: {'content-type': 'application/json; charset=utf-8'});
       }
       if (request.url.path == '/rooms/room1/preferences') {
-        return http.Response(jsonEncode({'members': [
+        return http.Response.bytes(utf8.encode(jsonEncode({'members': [
           {'uid': 'tester', 'submitted': true, 'preferences': {
             'budget': 17000,
             'region': '강남역',
@@ -34,7 +34,7 @@ void main() {
             'activities': ['전시', '카페'],
             'additional_notes': '조용한 곳',
           }},
-        ]}), 200);
+        ]})), 200, headers: {'content-type': 'application/json; charset=utf-8'});
       }
       return http.Response(jsonEncode({'detail': 'not found'}), 404);
     }));
