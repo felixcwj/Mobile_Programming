@@ -2,6 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 export FIREBASE_WEB_API_KEY=demo-local-test-key
+# This is an ephemeral loopback-only E2E server. Browser tests have random origins.
+export PLANIT_ALLOWED_ORIGINS='*'
 export FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
 export GOOGLE_CLOUD_PROJECT=demo-planit-integration
@@ -45,4 +47,7 @@ curl -fsS http://127.0.0.1:8765/health >/dev/null
 python backend/e2e/smoke_http.py
 if [[ "${PLANIT_E2E_RUN_DART:-0}" == "1" ]]; then
   (cd frontend && PLANIT_E2E_URL=http://127.0.0.1:8765 dart run tool/live_api_e2e.dart)
+fi
+if [[ "${PLANIT_E2E_RUN_BROWSER:-0}" == "1" ]]; then
+  (cd frontend && flutter test --platform chrome --dart-define=PLANIT_API_BASE_URL=http://127.0.0.1:8765 test/browser_live_widget_test.dart)
 fi
