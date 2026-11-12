@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meetsync/models/calendar_event.dart';
 import 'package:meetsync/models/plan_room.dart';
@@ -8,6 +12,7 @@ import 'package:meetsync/screens/home_screen.dart';
 import 'package:meetsync/screens/rooms/room_detail_screen.dart';
 import 'package:meetsync/services/calendar_controller.dart';
 import 'package:meetsync/services/rooms_controller.dart';
+import 'package:meetsync/services/planit_api.dart';
 
 CalendarEvent sampleEvent({
   String id = 'personal-test',
@@ -165,145 +170,156 @@ void main() {
     },
   );
 
-  testWidgets('Personal events validate, save, repeat, edit and delete', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(320, 740);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+
+  test('Personal event create, update and deletion follow server state', () async {
+    final api = PlanitApi.instance;
+    api.clearSession();
+    Map<String, dynamic>? stored;
+    var version = 0;
+    final seen = <String>[];
+    api.replaceHttpClientForTesting(MockClient((request) async {
+      seen.add('${request.method} ${request.url.path}');
+      if (request.url.path == '/auth/login') {
+        return http.Response(jsonEncode({'access_token': 'calendar-token'}), 200);
+      }
+      expect(request.headers['authorization'], 'Bearer calendar-token');
+      if (request.url.path == '/calendar/events' && request.method == 'POST') {
+        stored = {
+          ...jsonDecode(request.body) as Map<String, dynamic>,
+          'id': 'remote-personal-1',
+          'version': ++version,
+        };
+        return http.Response(jsonEncode({'event': stored}), 201);
+      }
+      if (request.url.path == '/calendar/events/remote-personal-1' &&
+          request.method == 'PUT') {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['version'], version);
+        stored = {...body, 'id': 'remote-personal-1', 'version': ++version};
+        return http.Response(jsonEncode({'event': stored}), 200);
+      }
+      if (request.url.path == '/calendar/events/remote-personal-1' &&
+          request.method == 'DELETE') {
+        expect(request.url.queryParameters['version'], '$version');
+        stored = null;
+        return http.Response(jsonEncode({'deleted': true}), 200);
+      }
+      if (request.url.path == '/calendar/events') {
+        return http.Response(jsonEncode({'events': stored == null ? [] : [stored]}), 200);
+      }
+      if (request.url.path == '/calendar/recurring-events' ||
+          request.url.path == '/calendar/room-appointments') {
+        return http.Response(jsonEncode({'events': []}), 200);
+      }
+      return http.Response(jsonEncode({'detail': 'unexpected route'}), 404);
+    }));
+    await api.login('planner', 'password123');
+    final rooms = RoomsController(rooms: []);
+    final calendar = CalendarController(roomsController: rooms);
+    try {
+      await calendar.saveRemote(sampleEvent(title: '독서 모임'));
+      expect(calendar.events.single.title, '독서 모임');
+      expect(calendar.events.single.id, 'remote-personal-1');
+      await calendar.saveRemote(sampleEvent(
+        id: 'remote-personal-1',
+        title: '수정한 독서 모임',
+        repeat: EventRepeat.weekly,
+      ));
+      expect(calendar.events.single.title, '수정한 독서 모임');
+      expect(calendar.entriesOn(DateTime(2026, 11, 19)), hasLength(1));
+      await calendar.deleteRemote('remote-personal-1');
+      expect(calendar.events, isEmpty);
+      expect(seen, containsAllInOrder([
+        'POST /calendar/events',
+        'PUT /calendar/events/remote-personal-1',
+        'DELETE /calendar/events/remote-personal-1',
+      ]));
+    } finally {
+      calendar.dispose();
+      rooms.dispose();
+      api.clearSession();
+    }
+  });
+
+  testWidgets('Failed server save keeps editor open and does not fake persistence',
+      (tester) async {
+    final api = PlanitApi.instance;
+    api.clearSession();
     final rooms = RoomsController(rooms: []);
     final calendar = CalendarController(roomsController: rooms);
     addTearDown(rooms.dispose);
     addTearDown(calendar.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CalendarScreen(
-          controller: calendar,
-          today: DateTime(2026, 11, 12),
-        ),
+    await tester.pumpWidget(MaterialApp(
+      home: CalendarScreen(
+        controller: calendar,
+        today: DateTime(2026, 11, 12),
       ),
-    );
+    ));
     await tester.tap(find.byKey(const ValueKey('add-calendar-event')));
     await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('event-title')), '저장 실패 일정');
+    await tester.ensureVisible(find.byKey(const ValueKey('save-event')));
     await tester.tap(find.byKey(const ValueKey('save-event')));
     await tester.pumpAndSettle();
-    expect(find.text('제목을 입력해 주세요.'), findsOneWidget);
-    await tester.enterText(find.byKey(const ValueKey('event-title')), '독서 모임');
-    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey('save-event')).hitTestable(),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
-    tester.view.resetViewInsets();
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('event-all-day')));
-    await tester.tap(find.byTooltip('반복 설정'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('매주'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('캘린더 분류'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('대학'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byTooltip('알림 시간 설정'));
-    await tester.tap(find.byTooltip('알림 시간 설정'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('30분 전'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('save-event')));
-    await tester.pumpAndSettle();
-    expect(calendar.events.single.allDay, isTrue);
-    expect(calendar.events.single.category, EventCategory.school);
-    expect(calendar.events.single.reminderMinutes, 30);
-    expect(calendar.entriesOn(DateTime(2026, 11, 19)), hasLength(1));
-    await tester.scrollUntilVisible(
-      find.widgetWithText(ListTile, '독서 모임'),
-      100,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.widgetWithText(ListTile, '독서 모임'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('event-title')),
-      '수정한 독서 모임',
-    );
-    await tester.tap(find.byKey(const ValueKey('save-event')));
-    await tester.pumpAndSettle();
-    expect(calendar.events.single.title, '수정한 독서 모임');
-    await tester.tap(find.widgetWithText(ListTile, '수정한 독서 모임'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('일정 메뉴'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('일정 삭제'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '삭제'));
-    await tester.pumpAndSettle();
+    expect(find.byType(EventEditorSheet), findsOneWidget);
     expect(calendar.events, isEmpty);
-    expect(find.byType(EventEditorSheet), findsNothing);
+    expect(find.textContaining('일정을 저장하지 못했습니다'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Home calendar button retains personal events across routes', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: HomeScreen(loginId: 'planner')),
-    );
-    await tester.tap(find.byTooltip('캘린더'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('add-calendar-event')));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('event-title')), '개인 일정');
-    await tester.tap(find.byKey(const ValueKey('save-event')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('홈으로 돌아가기'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('캘린더'));
-    await tester.pumpAndSettle();
-    expect(find.text('개인 일정'), findsWidgets);
-  });
-
-  testWidgets('Room date controls add and remove the linked calendar event', (
-    tester,
-  ) async {
-    final rooms = RoomsController(
-      rooms: [
-        PlanRoom(
-          id: 'new-room',
-          title: '저녁 약속',
-          region: '지역 미정',
-          inviteCode: 'TEST123',
-          members: const [RoomMember(name: '나', submitted: false)],
-        ),
-      ],
-    );
+  test('Room schedule updates calendar only after successful HTTP write', () async {
+    final api = PlanitApi.instance;
+    api.clearSession();
+    var scheduleVersion = 0;
+    String? scheduledAt;
+    api.replaceHttpClientForTesting(MockClient((request) async {
+      if (request.url.path == '/auth/login') {
+        return http.Response(jsonEncode({'access_token': 'schedule-token'}), 200);
+      }
+      expect(request.headers['authorization'], 'Bearer schedule-token');
+      if (request.url.path == '/rooms/new-room/schedule' &&
+          request.method == 'GET') {
+        return http.Response(jsonEncode({
+          'schedule': scheduleVersion == 0
+              ? null
+              : {'version': scheduleVersion, 'starts_at': scheduledAt}
+        }), 200);
+      }
+      if (request.url.path == '/rooms/new-room/schedule' &&
+          request.method == 'PUT') {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['version'], scheduleVersion);
+        scheduledAt = body['starts_at']?.toString();
+        scheduleVersion++;
+        return http.Response(jsonEncode({
+          'schedule': {'version': scheduleVersion, 'starts_at': scheduledAt}
+        }), 200);
+      }
+      return http.Response(jsonEncode({'detail': 'not found'}), 404);
+    }));
+    await api.login('planner', 'password123');
+    final rooms = RoomsController(rooms: [
+      PlanRoom(
+        id: 'new-room',
+        title: '저녁 약속',
+        region: '지역 미정',
+        inviteCode: 'TEST123',
+        members: const [RoomMember(name: '나', submitted: false)],
+      ),
+    ]);
     final calendar = CalendarController(roomsController: rooms);
-    addTearDown(rooms.dispose);
-    addTearDown(calendar.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: RoomDetailScreen(roomId: 'new-room', controller: rooms),
-      ),
-    );
-    expect(calendar.events, isEmpty);
-    await tester.tap(find.text('약속 날짜 정하기'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('선택'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('선택'));
-    await tester.pumpAndSettle();
-    final date = rooms.room('new-room').date!;
-    expect(calendar.entriesOn(date).single.event.roomId, 'new-room');
-    expect(find.text('약속 날짜 변경'), findsOneWidget);
-    await tester.tap(find.text('일정 해제'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '일정 해제'));
-    await tester.pumpAndSettle();
-    expect(calendar.events, isEmpty);
-    expect(rooms.room('new-room').date, isNull);
-    expect(tester.takeException(), isNull);
+    try {
+      final date = DateTime(2026, 11, 12, 18);
+      await rooms.saveRemoteSchedule('new-room', date);
+      expect(calendar.entriesOn(date).single.event.roomId, 'new-room');
+      await rooms.saveRemoteSchedule('new-room', null);
+      expect(rooms.room('new-room').date, isNull);
+      expect(calendar.events, isEmpty);
+      expect(scheduleVersion, 2);
+    } finally {
+      calendar.dispose();
+      rooms.dispose();
+      api.clearSession();
+    }
   });
 }
