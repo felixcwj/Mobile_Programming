@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -92,6 +93,37 @@ void main() {
     controller.dispose();
     api.clearSession();
     expect(() => api.request('GET', '/rooms'), throwsA(isA<PlanitApiException>()));
+  });
+
+  test('an in-flight initial refresh never removes a newly created room', () async {
+    final initialGet = Completer<http.Response>();
+    api.replaceHttpClientForTesting(MockClient((request) async {
+      if (request.url.path == '/auth/login') {
+        return http.Response('{"access_token":"test-token"}', 200);
+      }
+      if (request.url.path == '/rooms' && request.method == 'GET') {
+        return initialGet.future;
+      }
+      if (request.url.path == '/rooms' && request.method == 'POST') {
+        return http.Response('{"room_id":"new-room","invite_code":"AB2#C@!"}', 201);
+      }
+      if (request.url.path == '/calendar/room-appointments') {
+        return http.Response('{"events":[]}', 200);
+      }
+      return http.Response('{"detail":"not found"}', 404);
+    }));
+    await api.login('test', 'password');
+    final controller = RoomsController(rooms: []);
+    final staleRefresh = controller.loadRemote();
+    // Let the first GET start before room creation.
+    await Future<void>.delayed(Duration.zero);
+    final created = await controller.createRemoteRoom('Created while loading', 2);
+    expect(created.id, 'new-room');
+    initialGet.complete(http.Response('{"rooms":[]}', 200));
+    await staleRefresh;
+    expect(controller.rooms, hasLength(1));
+    expect(controller.room('new-room').title, 'Created while loading');
+    controller.dispose();
   });
 
   test('invalid password never grants a session', () async {
