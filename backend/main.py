@@ -415,7 +415,17 @@ def create_room(body: CreateRoomRequest, user: Annotated[dict, Depends(current_u
 def list_my_rooms(user: Annotated[dict, Depends(current_user)]):
     try:
         results = db.collection("rooms").where("member_uids", "array_contains", user["uid"]).stream()
-        rooms = [_room_data(snap) for snap in results]
+        rooms = []
+        for snap in results:
+            room = _room_data(snap)
+            submitted = {
+                pref.id for pref in
+                snap.reference.collection("preferences").stream()
+            }
+            room["submitted_uids"] = [
+                uid for uid in room["member_uids"] if uid in submitted
+            ]
+            rooms.append(room)
     except GoogleAPICallError:
         raise HTTPException(503, "방 목록 조회에 실패했습니다.")
     rooms.sort(key=lambda x: x["created_at"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
