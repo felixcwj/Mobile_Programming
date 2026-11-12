@@ -16,9 +16,9 @@
 | FastAPI + Firebase Auth/Firestore 공식 에뮬레이터 | **17개 실제 HTTP 시나리오 통과** | [에뮬레이터 E2E](https://github.com/felixcwj/Mobile_Programming/actions/runs/43175403306) |
 | Dart `PlanitApi` → FastAPI → 실제 Firebase 에뮬레이터 HTTP 연결 | **12개 검증 통과** | [에뮬레이터 E2E](https://github.com/felixcwj/Mobile_Programming/actions/runs/43175403306) |
 | Flutter Chrome UI → 실제 백엔드 → Firebase 에뮬레이터 | **실제 Chrome UI 로그인 + 방 생성 + 날짜 선택 및 공유 캘린더 저장 통과** | [에뮬레이터 E2E](https://github.com/felixcwj/Mobile_Programming/actions/runs/43175403306) |
-| 기존 프리뷰 기반 위젯 테스트(비차단) | **7 통과 / 6 실패** | [통합 체크](https://github.com/felixcwj/Mobile_Programming/actions/runs/43175403296) |
+| 최신 서버 연동 위젯 테스트(필수) | **13 통과 / 0 실패** | [전체 재검증](https://github.com/felixcwj/Mobile_Programming/actions/runs/43177997440) |
 
-두 GitHub Actions 워크플로의 **최종 실행 결론은 모두 success**입니다. 다만 미리보기 기반 위젯 테스트 6개는 진짜 서버 연결 이전의 임시 데이터 흐름을 전제로 작성되어 현재 실패합니다. 이 실패를 숨기지 않고 비차단 단계로 분리했습니다. 테스트를 최신 연동 구조로 개편해야 전체 테스트가 무조건 통과하는 상태가 됩니다.
+과거 미리보기 기반 위젯 테스트의 실패 6건은 2026-11-12에 서버 인증·서버 캘린더 CRUD·서버 약속 확정 및 오류 처리 기준으로 재작성하여 **13개 모두 통과**했습니다. `.github/workflows/planit-flutter-experiment.yml`에서 해당 테스트의 `continue-on-error` 설정을 제거해 필수 통과로 전환했습니다. 기존 Firebase 공식 에뮬레이터 실 HTTP E2E 결과는 그대로 유지됩니다.
 
 ## 실제 API/SDK로 검증한 기능
 
@@ -60,7 +60,7 @@
 - **기존 8자리 초대 코드 운영 DB 마이그레이션:** 스크립트 존재, 운영 데이터 변경 미실시.
 - **삭제 유예 기간 30일 계정 정리 스케줄러:** 운영 스케줄 실행 확인 미실시.
 - **같은 방에서 여러 차례 약속을 만드는 전체 Flutter 사용자 동선:** 백엔드 이력 누적은 검증했으나, 새로운 날짜를 처음부터 기획하는 UX 미완성.
-- **이전 프리뷰 위젯 테스트 6개:** 최신 서버 통합 흐름으로 수정 필요.
+- **구형 프리뷰 테스트 6개:** 서버 통합 기준 테스트로 교체 완료(13개 통과). 다만 실서비스 API/실기기 검증은 별도입니다.
 
 ## 재현 명령과 안전 경계
 
@@ -73,3 +73,13 @@
 - 브라우저 원본 에셋 복원: `frontend/tools/restore_upstream_assets.sh`
 
 **팀원 프론트엔드 저장소, 백엔드 통합 브랜치 및 main에는 병합하지 않았습니다.** 비교 평가용 단독 실험본으로 유지합니다.
+
+## 2026-11-12 후속 수정 및 재검증
+
+- 브랜치: `experiment/wonjoon-planit-integration`, 테스트 수정 완료 커밋 `bc84ce828`, 테스트 필수화 커밋 `89e547943`.
+- 앱 로그인: 잘못된 인증은 홈 진입을 막고, 성공한 인증은 서버에서 방 목록을 가져오는 동작을 위젯으로 검증.
+- 캘린더: 실제 Dart HTTP 클라이언트 모킹으로 개인 일정 원격 생성·수정·반복·삭제와 서버 오류 시 로컬 성공 오표시 방지를 검증. 별도 원격 방 일정 저장·해제 테스트 추가.
+- AI 코스 확정: 결과 화면에서 취소 시 서버 확정 호출이 없고, 승인 시 서버 revision 전달·확정 후 상태 및 콜백을 확인.
+- 테스트 수정 과정의 한글 fixture UTF-8 응답 및 스크롤/화면 크기 처리 오류 수정.
+- 수정 위젯 테스트 13/13 통과: https://github.com/felixcwj/Mobile_Programming/actions/runs/43177997440
+- 운영 Firebase·OpenRouter·카카오 실 API·모바일 실기기 미실시는 변함없으며, 자격증명 없이 성공으로 보고하지 않습니다.
