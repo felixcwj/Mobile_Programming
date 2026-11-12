@@ -116,6 +116,11 @@ void main() {
     }
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
+    // The real HTTP gateway has bounded request timers. Drain any requests
+    // that were still in flight when the UI was disposed, so flutter_test
+    // verifies the test does not leak timers into its next scenario.
+    await tester.pump(const Duration(seconds: 26));
+    await tester.pumpAndSettle();
     final teardownError = tester.takeException();
     if (teardownError != null) {
       print('E2E_STAGE: widget_teardown_error=$teardownError');
