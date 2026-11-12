@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../models/plan_room.dart';
 import '../../services/rooms_controller.dart';
 import 'ai_result_screen.dart';
+import 'room_preferences_screen.dart';
 import 'room_widgets.dart';
 
 class RoomDetailScreen extends StatelessWidget {
@@ -87,6 +88,42 @@ class RoomDetailScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _editPreferences(BuildContext context) async {
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => RoomPreferencesScreen(
+          roomId: roomId,
+          initialDate: controller.room(roomId).date,
+        ),
+      ),
+    );
+    if (!context.mounted || result == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+    try {
+      await controller.syncRoom(roomId);
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('방 상태를 갱신하지 못했습니다: $error')));
+      }
+    }
+  }
+
+  Future<void> _generateAi(BuildContext context) async {
+    try {
+      await controller.generateRecommendation(roomId);
+      if (!context.mounted) return;
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => AiResultScreen(
+              roomId: roomId, controller: controller, onConfirmed: onConfirmed)));
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('AI 추천에 실패했습니다: $error')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
@@ -159,7 +196,7 @@ class RoomDetailScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          '초대 코드 미리보기예요. 실제 방 참여는 서버 연결 후 가능해요.',
+                          '실제 초대 코드입니다. 친구에게 전달하면 같은 방에 참여할 수 있습니다.',
                           style: TextStyle(color: roomMuted, height: 1.5),
                         ),
                         const SizedBox(height: 16),
@@ -187,7 +224,7 @@ class RoomDetailScreen extends StatelessWidget {
                                   if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('예시 초대 코드를 복사했어요.'),
+                                      content: Text('초대 코드를 복사했어요.'),
                                     ),
                                   );
                                 } catch (_) {
@@ -235,6 +272,18 @@ class RoomDetailScreen extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 24),
+                  RoomAction(
+                    label: '내 약속 조건 입력·수정',
+                    icon: Icons.edit_note_outlined,
+                    onPressed: () => _editPreferences(context),
+                  ),
+                  const SizedBox(height: 10),
+                  RoomAction(
+                    label: 'AI 추천 생성·새로고침',
+                    icon: Icons.auto_awesome_outlined,
+                    onPressed: () => _generateAi(context),
+                  ),
                   const SizedBox(height: 28),
                   if (room.course.isNotEmpty)
                     RoomAction(
@@ -251,22 +300,12 @@ class RoomDetailScreen extends StatelessWidget {
                         ),
                       ),
                     )
-                  else ...[
-                    RoomAction(
-                      label: room.allSubmitted
-                          ? 'AI 코스 생성 준비 중이에요'
-                          : '친구들의 취향을 기다리고 있어요',
-                      onPressed: null,
-                      icon: Icons.hourglass_empty,
-                    ),
-                    const SizedBox(height: 10),
+                  else
                     const Text(
-                      'AI 코스 생성은 백엔드 연결 후 제공될 예정이에요.',
+                      '참가자들의 조건을 입력한 뒤 AI 추천을 생성할 수 있습니다.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: roomMuted, fontSize: 12),
                     ),
-                  ],
-                  const RoomDemoNotice(),
                 ],
               ),
             ),
