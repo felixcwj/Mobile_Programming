@@ -115,11 +115,14 @@ class PlanitApi {
     required String email,
     required String name,
     required String phone,
+    String? gender,
+    String? birthday,
   }) async {
     await request('POST', '/auth/signup', authenticated: false, body: {
       'id': id, 'nickname': nickname, 'password': password,
       'password_confirm': passwordConfirm, 'email': email,
       'name': name, 'phone': phone,
+      'gender': gender, 'birthday': birthday,
     });
   }
 
