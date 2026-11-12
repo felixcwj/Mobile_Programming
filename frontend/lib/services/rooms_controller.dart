@@ -96,12 +96,22 @@ class RoomsController extends ChangeNotifier {
   final List<PlanRoom> _rooms;
   final Map<String, int> _scheduleVersions = {};
   final Map<String, String> _recommendationRevisions = {};
+  int _localMutationEpoch = 0;
+  int _latestLoadRequest = 0;
 
   /// Refreshes actual rooms and confirmed/pending dates from the backend.
   Future<void> loadRemote() async {
+    // An older refresh must never erase a room created while its HTTP calls
+    // were still in flight (e.g. the initial home refresh vs Create Room).
+    final requestId = ++_latestLoadRequest;
+    final initialMutationEpoch = _localMutationEpoch;
     final api = PlanitApi.instance;
     final response = await api.request('GET', '/rooms');
     final calendar = await api.request('GET', '/calendar/room-appointments');
+    if (requestId != _latestLoadRequest ||
+        initialMutationEpoch != _localMutationEpoch) {
+      return;
+    }
     final raw = response['rooms'] as List<dynamic>? ?? [];
     final items = calendar['events'] as List<dynamic>? ?? [];
     final byRoom = <String, Map<String, dynamic>>{};
@@ -240,6 +250,7 @@ class RoomsController extends ChangeNotifier {
     final index = _rooms.indexWhere((room) => room.id == updated.id);
     if (index < 0) return;
     _rooms[index] = updated;
+    _localMutationEpoch++;
     notifyListeners();
   }
 
@@ -306,6 +317,7 @@ class RoomsController extends ChangeNotifier {
     final index = _rooms.indexWhere((room) => room.id == id);
     if (index < 0) return;
     _rooms[index] = _rooms[index].copyWith(date: date, clearDate: date == null);
+    _localMutationEpoch++;
     notifyListeners();
   }
 
@@ -317,6 +329,7 @@ class RoomsController extends ChangeNotifier {
       throw ArgumentError('A room with this ID or invite code already exists.');
     }
     _rooms.add(room);
+    _localMutationEpoch++;
     notifyListeners();
   }
 
