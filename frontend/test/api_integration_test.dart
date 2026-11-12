@@ -26,6 +26,8 @@ void main() {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         expect(body['id'], 'planner_1');
         expect(body['password_confirm'], body['password']);
+        expect(body['gender'], 'male');
+        expect(body['birthday'], '2003-12-28');
         return http.Response(jsonEncode({'message': 'ok', 'id': 'planner_1'}), 201);
       }
       return http.Response(jsonEncode({'detail': 'not found'}), 404);
@@ -37,8 +39,10 @@ void main() {
       password: 'password123',
       passwordConfirm: 'password123',
       email: 'demo@example.com',
-      name: '테스트',
+      name: 'Alex',
       phone: '01012345678',
+      gender: 'male',
+      birthday: '2003-12-28',
     );
     expect(paths, ['GET /auth/check-id', 'POST /auth/signup']);
   });
