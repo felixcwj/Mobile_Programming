@@ -14,6 +14,8 @@ class CalendarController extends ChangeNotifier {
   final Map<String, CalendarEvent> _personalEvents = {};
   int _nextId = 0;
   final Map<String, int> _versions = {};
+  final Map<String, CalendarEvent> _remoteRoomEvents = {};
+  bool _serverRoomEventsLoaded = false;
 
   String newEventId() => 'personal-${_nextId++}';
 
@@ -67,6 +69,28 @@ class CalendarController extends ChangeNotifier {
         notes: raw['memo']?.toString() ?? '',
       );
     }
+    final roomsResponse = await api.request('GET', '/calendar/room-appointments');
+    _remoteRoomEvents.clear();
+    for (final raw in roomsResponse['events'] as List<dynamic>? ?? []) {
+      if (raw is! Map<String, dynamic>) continue;
+      final id = raw['id']?.toString();
+      final start = DateTime.tryParse(raw['starts_at']?.toString() ?? '')?.toLocal();
+      if (id == null || start == null) continue;
+      final end = DateTime.tryParse(raw['ends_at']?.toString() ?? '')?.toLocal();
+      _remoteRoomEvents[id] = CalendarEvent(
+        id: id,
+        title: raw['title']?.toString() ?? '약속',
+        start: start,
+        end: end != null && end.isAfter(start)
+            ? end
+            : start.add(const Duration(microseconds: 1)),
+        roomId: raw['room_id']?.toString(),
+        location: raw['location']?.toString() ?? '',
+        category: EventCategory.appointment,
+        notes: raw['status'] == 'confirmed' ? '확정된 약속' : '예정된 약속',
+      );
+    }
+    _serverRoomEventsLoaded = true;
     notifyListeners();
   }
 
@@ -108,7 +132,10 @@ class CalendarController extends ChangeNotifier {
 
   List<CalendarEvent> get events => [
     ..._personalEvents.values,
-    for (final room in roomsController.rooms)
+    if (_serverRoomEventsLoaded)
+      ..._remoteRoomEvents.values,
+    if (!_serverRoomEventsLoaded)
+      for (final room in roomsController.rooms)
       if (room.date != null)
         CalendarEvent(
           id: 'room-${room.id}',
