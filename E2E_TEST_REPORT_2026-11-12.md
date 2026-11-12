@@ -2,7 +2,7 @@
 
 검증일: **2026-11-12 (KST)**  
 실험 브랜치: `experiment/wonjoon-planit-integration`  
-검증 커밋: `f3258dca3f9c7ddd7c13c82bd7da9f399e31bf50`  
+확장 E2E 검증 커밋: `47dd5ab01` (2026-11-12, 빌드·E2E 성공)  
 원본 Flutter: `yhooni29/planit_front` main `c4becdf0010d`  
 원본 백엔드: `feature/backend-integration` `30c40018`
 
@@ -10,13 +10,13 @@
 
 | 검증 | 결과 | 실행 로그 |
 |---|---|---|
-| 백엔드 Python 테스트 | **86 통과 / 1 warning** | [통합 체크](https://github.com/felixcwj/Mobile_Programming/actions/runs/43173048430) |
-| Flutter `analyze`, 웹 빌드 | **통과** | [통합 체크](https://github.com/felixcwj/Mobile_Programming/actions/runs/43173048430) |
-| 신규 Flutter API/프로필 테스트 | **14 통과** | [통합 체크](https://github.com/felixcwj/Mobile_Programming/actions/runs/43173048430) |
-| FastAPI + Firebase Auth/Firestore 공식 에뮬레이터 | **11개 실제 HTTP 시나리오 통과** | [에뮬레이터 E2E](https://github.com/felixcwj/Mobile_Programming/actions/runs/43173048505) |
-| Dart `PlanitApi` → FastAPI → 실제 Firebase 에뮬레이터 HTTP 연결 | **12개 검증 통과** | [에뮬레이터 E2E](https://github.com/felixcwj/Mobile_Programming/actions/runs/43173048505) |
-| Flutter Chrome UI → 실제 백엔드 → Firebase 에뮬레이터 | **로그인 + 방 생성 UI 테스트 통과** | [에뮬레이터 E2E](https://github.com/felixcwj/Mobile_Programming/actions/runs/43173048505) |
-| 기존 프리뷰 기반 위젯 테스트(비차단) | **7 통과 / 6 실패** | [통합 체크](https://github.com/felixcwj/Mobile_Programming/actions/runs/43173048430) |
+| 백엔드 Python 테스트 | **86 통과 / 1 warning** | [통합 체크](https://github.com/felixcwj/Mobile_Programming/actions/runs/43175403296) |
+| Flutter `analyze`, 웹 빌드 | **통과** | [통합 체크](https://github.com/felixcwj/Mobile_Programming/actions/runs/43175403296) |
+| 신규 Flutter API/프로필 테스트 | **14 통과** | [통합 체크](https://github.com/felixcwj/Mobile_Programming/actions/runs/43175403296) |
+| FastAPI + Firebase Auth/Firestore 공식 에뮬레이터 | **17개 실제 HTTP 시나리오 통과** | [에뮬레이터 E2E](https://github.com/felixcwj/Mobile_Programming/actions/runs/43175403306) |
+| Dart `PlanitApi` → FastAPI → 실제 Firebase 에뮬레이터 HTTP 연결 | **12개 검증 통과** | [에뮬레이터 E2E](https://github.com/felixcwj/Mobile_Programming/actions/runs/43175403306) |
+| Flutter Chrome UI → 실제 백엔드 → Firebase 에뮬레이터 | **실제 Chrome UI 로그인 + 방 생성 + 날짜 선택 및 공유 캘린더 저장 통과** | [에뮬레이터 E2E](https://github.com/felixcwj/Mobile_Programming/actions/runs/43175403306) |
+| 기존 프리뷰 기반 위젯 테스트(비차단) | **7 통과 / 6 실패** | [통합 체크](https://github.com/felixcwj/Mobile_Programming/actions/runs/43175403296) |
 
 두 GitHub Actions 워크플로의 **최종 실행 결론은 모두 success**입니다. 다만 미리보기 기반 위젯 테스트 6개는 진짜 서버 연결 이전의 임시 데이터 흐름을 전제로 작성되어 현재 실패합니다. 이 실패를 숨기지 않고 비차단 단계로 분리했습니다. 테스트를 최신 연동 구조로 개편해야 전체 테스트가 무조건 통과하는 상태가 됩니다.
 
@@ -35,8 +35,19 @@
 9. 날짜 변경이 승인된 뒤 외부 AI 호출 실패에도 날짜 유지
 10. 동일 방의 두 번째 약속 확정 시 과거 약속 기록 보존
 11. 방 탈퇴 사용자의 공유 일정 숨김, 다른 참여자 데이터 유지
+12. 마이페이지 닉네임 변경 및 비공개 성향 저장
+13. 일반 참가자의 조건 수정 제안과 전원 승인
+14. 조건 변경 제안 거절 및 기존 값 유지
+15. 만남 지역 변경 제안·승인
+16. 확정 약속 날짜 변경 제안·동의
+17. 비밀번호 확인 기반 탈퇴 신청, 중복 요청 차단, 취소
 
-`frontend/tool/live_api_e2e.dart`는 실제 Dart HTTP 클라이언트로 서버에 연결해 12개 항목을 검증합니다. `frontend/test/browser_live_widget_test.dart`는 **Chrome의 Flutter 화면에서** 로그인 필드를 입력하고 방 생성 버튼을 조작하여 서버에 실제로 방이 만들어졌는지 확인합니다.
+`frontend/tool/live_api_e2e.dart`는 실제 Dart HTTP 클라이언트로 서버에 연결해 12개 항목을 검증합니다. `frontend/test/browser_live_widget_test.dart`는 **Chrome의 Flutter 화면에서** 로그인 필드를 입력하고 방 생성 버튼을 조작하여 서버에 실제로 방이 만들어졌는지 확인하고, UI에서 날짜를 골라 참가자 공유 캘린더에 저장된 것도 확인합니다.
+
+## 네이티브 빌드 확인
+
+- Android 디버그 APK와 iOS 시뮬레이터 앱의 빌드 성공을 GitHub Actions에서 확인했습니다. [빌드 실행](https://github.com/felixcwj/Mobile_Programming/actions/runs/43174895792). 빌드 성공은 실제 기기에 설치·구동했다는 뜻은 아닙니다.
+- 실제 Chrome 브라우저 E2E에서 발견한 **이전 방 목록 응답이 방금 생성한 방을 삭제하는 비동기 동시성 버그**는 `RoomsController`의 요청/로컬 변경 버전 보호로 수정했고, 확장 Chrome E2E를 다시 통과했습니다.
 
 ## 아직 완료되지 않은 실환경 검증
 
