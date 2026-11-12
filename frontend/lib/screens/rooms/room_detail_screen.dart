@@ -38,13 +38,22 @@ class RoomDetailScreen extends StatelessWidget {
       cancelText: '취소',
     );
     if (time == null || !context.mounted) return;
-    controller.setDate(
-      room.id,
-      DateTime(date.year, date.month, date.day, time.hour, time.minute),
-    );
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('약속 날짜를 캘린더에 추가했어요.')));
+    try {
+      await controller.saveRemoteSchedule(
+        room.id,
+        DateTime(date.year, date.month, date.day, time.hour, time.minute),
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('참가자 캘린더에 약속 날짜를 반영했습니다.')),
+      );
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('약속 날짜를 변경하지 못했습니다: $error')),
+        );
+      }
+    }
   }
 
   Future<void> _removeSchedule(BuildContext context) async {
@@ -65,7 +74,17 @@ class RoomDetailScreen extends StatelessWidget {
         ],
       ),
     );
-    if (accepted == true) controller.setDate(roomId, null);
+    if (accepted == true) {
+      try {
+        await controller.saveRemoteSchedule(roomId, null);
+      } catch (error) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('일정을 해제하지 못했습니다: $error')),
+          );
+        }
+      }
+    }
   }
 
   @override
