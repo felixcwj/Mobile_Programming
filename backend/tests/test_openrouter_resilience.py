@@ -82,10 +82,10 @@ def test_provider_pool_429_is_not_mislabeled_as_daily_limit(monkeypatch):
     assert len(calls) == 1
 
 
-def test_null_content_is_retried_once_with_low_reasoning(monkeypatch, capsys):
+def test_null_content_is_retried_without_unsupported_reasoning(monkeypatch, capsys):
     calls = []
     empty = fake_response(200, {"model": "sample:free", "choices": [
-        {"finish_reason": "length", "message": {"content": None, "reasoning": "private"}}
+        {"finish_reason": "stop", "message": {"content": None, "reasoning": "private"}}
     ], "usage": {"completion_tokens": 5000,
                  "completion_tokens_details": {"reasoning_tokens": 5000}}})
     valid_plan = {
@@ -102,7 +102,7 @@ def test_null_content_is_retried_once_with_low_reasoning(monkeypatch, capsys):
     assert asyncio.run(course(CONDITIONS, CANDIDATES)) == valid_plan
     assert len(calls) == 2
     assert "reasoning" not in calls[0]
-    assert calls[1]["reasoning"] == {"effort": "none"}
+    assert "reasoning" not in calls[1]
     assert "reasoning_tokens" in capsys.readouterr().out
 
 
@@ -128,3 +128,29 @@ def test_openrouter_per_minute_limit_is_explained(monkeypatch):
         asyncio.run(course(CONDITIONS, CANDIDATES))
     assert exc.value.status_code == 429
     assert "분당" in exc.value.detail
+
+def test_http_400_reports_provider_message_without_retry(monkeypatch):
+    calls = []
+    response = fake_response(400, {"error": {
+        "message": "Unsupported reasoning setting for model",
+        "code": 400,
+    }})
+    course = course_function(monkeypatch, [response], calls)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(course(CONDITIONS, CANDIDATES))
+    assert exc.value.status_code == 502
+    assert "Unsupported reasoning setting" in exc.value.detail
+    assert len(calls) == 1
+
+
+def test_length_empty_completion_does_not_retry(monkeypatch):
+    calls = []
+    response = fake_response(200, {"choices": [
+        {"finish_reason": "length", "message": {"content": None}},
+    ], "usage": {"completion_tokens": 5000}})
+    course = course_function(monkeypatch, [response], calls)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(course(CONDITIONS, CANDIDATES))
+    assert exc.value.status_code == 502
+    assert "출력 토큰" in exc.value.detail
+    assert len(calls) == 1
