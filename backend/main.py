@@ -110,6 +110,10 @@ class PasswordRequest(BaseModel):
     password: str
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=1, max_length=4096)
+
+
 async def firebase_password_login(email: str, password: str) -> dict:
     """Firebase Auth public REST API: verify password and return ID/refresh tokens."""
     emulator_host = os.getenv("FIREBASE_AUTH_EMULATOR_HOST", "").strip()
@@ -264,6 +268,48 @@ async def login(body: LoginRequest):
         "expires_in": int(result["expiresIn"]),
         "refresh_token": result["refreshToken"],
         "uid": result["localId"],
+    }
+
+
+@app.post("/auth/refresh")
+async def refresh_access_token(body: RefreshRequest):
+    """Exchange a Firebase refresh token without storing passwords or tokens."""
+    emulator_host = os.getenv("FIREBASE_AUTH_EMULATOR_HOST", "").strip()
+    url = (
+        f"http://{emulator_host}/securetoken.googleapis.com/v1/token"
+        if emulator_host else "https://securetoken.googleapis.com/v1/token"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                url,
+                params={"key": API_KEY},
+                data={"grant_type": "refresh_token", "refresh_token": body.refresh_token},
+            )
+    except (httpx.RequestError, httpx.TimeoutException):
+        raise HTTPException(503, "인증 갱신 서버에 연결할 수 없습니다.")
+    if response.status_code in (400, 401, 403):
+        raise HTTPException(401, "로그인 갱신이 불가능합니다. 다시 로그인해 주세요.")
+    if response.status_code != 200:
+        raise HTTPException(502, "로그인 갱신을 완료하지 못했습니다.")
+    try:
+        data = response.json()
+        access_token = data["id_token"]
+        refresh_token = data["refresh_token"]
+        user_id = data["user_id"]
+        expires_in = int(data["expires_in"])
+        if not all(isinstance(value, str) and value for value in (access_token, refresh_token, user_id)):
+            raise ValueError("missing token")
+        if expires_in <= 0:
+            raise ValueError("invalid expiry")
+    except (KeyError, ValueError, TypeError):
+        raise HTTPException(502, "로그인 갱신 응답이 올바르지 않습니다.")
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_in": expires_in,
+        "uid": user_id,
+        "token_type": "bearer",
     }
 
 
