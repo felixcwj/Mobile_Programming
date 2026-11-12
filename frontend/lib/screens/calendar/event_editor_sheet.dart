@@ -156,10 +156,9 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
     });
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    widget.controller.save(
-      CalendarEvent(
+    final updated = CalendarEvent(
         id: widget.event?.id ?? widget.controller.newEventId(),
         title: _title.text.trim(),
         start: _start,
@@ -170,9 +169,17 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
         reminderMinutes: _reminderMinutes,
         location: _location.text.trim(),
         notes: _notes.text.trim(),
-      ),
-    );
-    Navigator.of(context).pop(true);
+      );
+    try {
+      await widget.controller.saveRemote(updated);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('일정을 저장하지 못했습니다: $error')),
+        );
+      }
+    }
   }
 
   Future<void> _delete() async {
@@ -198,8 +205,16 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    widget.controller.delete(widget.event!.id);
-    Navigator.of(context).pop(true);
+    try {
+      await widget.controller.deleteRemote(widget.event!.id);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('일정을 삭제하지 못했습니다: $error')),
+        );
+      }
+    }
   }
 
   String get _reminderLabel => switch (_reminderMinutes) {
