@@ -21,7 +21,7 @@ class AiResultScreen extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('이 코스로 약속을 확정할까요?'),
         content: const Text(
-          '이 앱에서 약속을 확정해요. 약속 날짜가 정해져 있으면 앱 캘린더에 표시되며, 친구에게 공유하는 기능은 아직 준비 중이에요.',
+          '이 코스로 확정하면 참가자들의 공유 캘린더에 약속이 표시됩니다.',
         ),
         actions: [
           TextButton(
@@ -36,12 +36,17 @@ class AiResultScreen extends StatelessWidget {
       ),
     );
     if (accepted != true || !context.mounted) return;
-    if (controller.confirm(roomId)) {
+    try {
+      await controller.confirmRemote(roomId);
       onConfirmed?.call(controller.room(roomId));
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('미리보기 약속을 확정했어요.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('서버에 약속을 확정했습니다.')));
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('약속 확정에 실패했습니다: $error')));
+      }
     }
   }
 
@@ -91,7 +96,7 @@ class AiResultScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '코스 예시',
+                          'AI 추천 코스',
                           style: TextStyle(
                             color: roomOrange,
                             fontWeight: FontWeight.w700,
@@ -99,7 +104,7 @@ class AiResultScreen extends StatelessWidget {
                         ),
                         SizedBox(height: 8),
                         Text(
-                          '식사와 산책, 쉬어가는 시간을 담은 샘플 코스예요. 실제 AI 분석 결과가 아니며 장소·영업시간·비용은 아직 확인되지 않았어요.',
+                          'AI가 제안한 코스입니다. 방문 전 운영시간과 이동시간을 직접 확인해 주세요.',
                           style: TextStyle(color: roomMuted, height: 1.7),
                         ),
                       ],
@@ -176,14 +181,11 @@ class AiResultScreen extends StatelessWidget {
                   RoomAction(
                     label: confirmed ? '확정된 약속이에요' : '이 코스로 약속 확정',
                     icon: Icons.check,
-                    onPressed:
-                        !confirmed &&
-                            room.allSubmitted &&
-                            room.course.isNotEmpty
+                    onPressed: !confirmed && room.course.isNotEmpty
                         ? () => _confirm(context)
                         : null,
                   ),
-                  const RoomDemoNotice(),
+
                 ],
               ),
             ),
