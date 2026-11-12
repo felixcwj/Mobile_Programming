@@ -1,0 +1,52 @@
+name: PlanIt native platform build checks
+on:
+  push:
+    branches:
+      - experiment/wonjoon-planit-integration
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/planit-native-build-experiment.yml'
+  workflow_dispatch:
+
+jobs:
+  android-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore pinned Flutter Android/iOS assets
+        run: bash frontend/tools/restore_upstream_assets.sh
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.8'
+          cache: true
+      - name: Install dependencies
+        working-directory: frontend
+        run: flutter pub get
+      - name: Build Android debug APK
+        working-directory: frontend
+        run: flutter build apk --debug --dart-define=PLANIT_API_BASE_URL=http://10.0.2.2:8000
+
+  ios-simulator:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore pinned Flutter Android/iOS assets
+        run: bash frontend/tools/restore_upstream_assets.sh
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.8'
+          cache: true
+      - name: Install dependencies
+        working-directory: frontend
+        run: flutter pub get
+      - name: Build unsigned iOS simulator app
+        working-directory: frontend
+        run: flutter build ios --simulator --no-codesign --dart-define=PLANIT_API_BASE_URL=http://127.0.0.1:8000
