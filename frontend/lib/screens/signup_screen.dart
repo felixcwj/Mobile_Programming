@@ -24,6 +24,23 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _passwordVisible = false;
   bool _confirmVisible = false;
   bool _submitting = false;
+  String? _gender;
+  DateTime? _birthday;
+
+  String _dateString(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickBirthday() async {
+    final now = DateTime.now();
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _birthday ?? DateTime(now.year - 20, 1, 1),
+      firstDate: DateTime(1900),
+      lastDate: now,
+      helpText: '생년월일 (선택)',
+    );
+    if (value != null && mounted) setState(() => _birthday = value);
+  }
 
   static const _blue = Color(0xFF4F7CFF);
 
@@ -71,6 +88,8 @@ class _SignupScreenState extends State<SignupScreen> {
         email: _emailController.text.trim(),
         name: _nameController.text.trim(),
         phone: _phoneController.text.trim(),
+        gender: _gender,
+        birthday: _birthday == null ? null : _dateString(_birthday!),
       );
       if (!mounted) return;
       _showMessage('회원가입이 완료됐습니다. 로그인해 주세요.');
@@ -303,6 +322,43 @@ class _SignupScreenState extends State<SignupScreen> {
                       },
                     ),
 
+                    const SizedBox(height: 12),
+                    const Text('성별 (선택)', style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final item in const [
+                          ('female', '여성'), ('male', '남성'),
+                          ('other', '기타'), ('prefer_not_to_say', '응답하지 않음'),
+                        ])
+                          ChoiceChip(
+                            label: Text(item.$2),
+                            selected: _gender == item.$1,
+                            onSelected: (selected) =>
+                                setState(() => _gender = selected ? item.$1 : null),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('생년월일 (선택)'),
+                      subtitle: Text(_birthday == null ? '입력하지 않아도 됩니다' : _dateString(_birthday!)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_birthday != null)
+                            IconButton(
+                              tooltip: '생년월일 지우기',
+                              icon: const Icon(Icons.clear),
+                              onPressed: () => setState(() => _birthday = null),
+                            ),
+                          const Icon(Icons.calendar_month_outlined),
+                        ],
+                      ),
+                      onTap: _pickBirthday,
+                    ),
                     const SizedBox(height: 12),
 
                     SizedBox(
