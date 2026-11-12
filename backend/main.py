@@ -60,11 +60,17 @@ class SignupRequest(BaseModel):
     email: EmailStr
     name: str = Field(min_length=1, max_length=50)
     phone: str = Field(min_length=10, max_length=20)
+    gender: str | None = None
+    birthday: date | None = None
 
     @model_validator(mode="after")
     def check(self):
         if self.nickname != self.nickname.strip():
             raise ValueError("닉네임 앞뒤에 공백을 사용할 수 없습니다.")
+        if self.gender is not None and self.gender not in ("female", "male", "other", "prefer_not_to_say"):
+            raise ValueError("성별 선택값이 올바르지 않습니다.")
+        if self.birthday is not None and (self.birthday.year < 1900 or self.birthday > date.today()):
+            raise ValueError("생년월일이 올바르지 않습니다.")
         if self.password != self.password_confirm:
             raise ValueError("비밀번호가 일치하지 않습니다.")
         if not re.fullmatch(r"01[016789]\d{7,8}", self.phone.replace("-", "")):
@@ -212,6 +218,10 @@ def signup(body: SignupRequest):
         "email": str(body.email),
         "name": body.name,
         "phone": body.phone,
+        "preferences": {
+            "gender": body.gender,
+            "birthday": body.birthday.isoformat() if body.birthday else None,
+        },
         "created_at": datetime.now(timezone.utc),
     }
     try:
@@ -811,12 +821,21 @@ def _distance_km(a: dict, b: dict) -> float:
 
 
 async def _resolve_departure(query: str) -> dict:
-    places = await _kakao_search(query, size=10)
+    value = query.strip()
+    # Require a Korean location name rather than silently choosing the first
+    # unrelated Kakao keyword result (e.g. "USA" or "gangnam").
+    if not re.search(r'[가-힣]', value):
+        raise HTTPException(422, f'국내 위치를 한글로 구체적으로 입력해 주세요: {value}')
+    places = await _kakao_search(value, size=10)
     if not places:
-        raise HTTPException(422, f'출발 위치를 찾을 수 없습니다: {query}')
-    exact = next((p for p in places if p['name'].replace(' ', '') == query.replace(' ', '')), None)
-    return exact or places[0]
-
+        raise HTTPException(422, f'위치를 찾을 수 없습니다: {value}')
+    normalized = re.sub(r'\s+', '', value).casefold()
+    matches = [place for place in places if re.sub(r'\s+', '', place['name']).casefold() == normalized]
+    if not matches:
+        raise HTTPException(422, f'위치가 모호합니다. 정확한 역 또는 장소 이름을 입력해 주세요: {value}')
+    if len(matches) > 1:
+        raise HTTPException(422, f'동일한 이름의 장소가 여러 개입니다. 더 구체적인 장소 이름을 입력해 주세요: {value}')
+    return matches[0]
 
 async def _select_meeting_area(conditions: dict) -> dict:
     if conditions['meeting_mode'] == 'fixed':
