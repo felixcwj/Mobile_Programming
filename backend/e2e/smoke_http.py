@@ -63,7 +63,7 @@ assert request("GET", "/auth/check-id", params={"id": a})["available"] is False
 assert request("GET", "/auth/check-id", params={"id": "freeuser42"})["available"] is True
 request("POST", "/auth/signup", body={
     "id": a, "password": password_a, "password_confirm": password_a,
-    "nickname": f"Different{prefix}", "email": "different@example.com",
+    "nickname": f"Other{prefix}", "email": "different@example.com",
     "name": "Duplicate", "phone": "01012345678",
 }, status=409)
 checks.append("Username uniqueness and validation")
