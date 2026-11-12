@@ -15,13 +15,13 @@ Future<void> main() async {
   final client = http.Client();
   final api = PlanitApi.instance;
   api.replaceHttpClientForTesting(client, baseUrl: baseUrl);
-  final id = 'dart${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
+  final id = 'dart${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'.substring(0, 12);
   final password = 'Test_12345Aa';
   try {
     check(await api.isIdAvailable(id), 'Dart client: available ID');
     await api.signup(
       id: id,
-      nickname: 'DartTester${id.substring(id.length - 4)}',
+      nickname: 'Dart${id.substring(id.length - 5)}',
       password: password,
       passwordConfirm: password,
       email: '$id@example.com',
