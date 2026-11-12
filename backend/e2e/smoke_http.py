@@ -33,7 +33,7 @@ def request(method, path, *, token=None, body=None, params=None, status=200):
     return response.json()
 
 
-def account(number):
+def account(number, *, gender=None, birthday=None):
     identifier = f"qa{prefix}{number}"
     password = f"Qatest_{prefix}a123"
     nickname = f"QA-{prefix}-{number}"
@@ -42,6 +42,7 @@ def account(number):
         "id": identifier, "password": password, "password_confirm": password,
         "nickname": nickname, "email": email,
         "name": f"QA{number}", "phone": "01012345678",
+        "gender": gender, "birthday": birthday,
     }, status=201)
     result = request("POST", "/auth/login", body={"id": identifier, "password": password})
     assert result.get("access_token") and result["uid"] == identifier
@@ -55,9 +56,12 @@ checks.append("Health and unauthorized access")
 
 a, password_a, ta = account(1)
 b, password_b, tb = account(2)
-c, password_c, tc = account(3)
+c, password_c, tc = account(3, gender="female", birthday="2001-03-15")
+assert request("GET", "/mypage/preferences", token=tc)["preferences"] == {
+    "gender": "female", "birthday": "2001-03-15",
+}
 request("POST", "/auth/login", body={"id": a, "password": "wrong"}, status=401)
-checks.append("Three real Firebase Auth account signups and login tokens")
+checks.append("Three real Firebase Auth signups, optional signup demographics persist, login tokens")
 
 assert request("GET", "/auth/check-id", params={"id": a})["available"] is False
 assert request("GET", "/auth/check-id", params={"id": "freeuser42"})["available"] is True
