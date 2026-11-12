@@ -95,6 +95,7 @@ class RoomsController extends ChangeNotifier {
 
   final List<PlanRoom> _rooms;
   final Map<String, int> _scheduleVersions = {};
+  final Map<String, String> _recommendationRevisions = {};
 
   /// Refreshes actual rooms and confirmed/pending dates from the backend.
   Future<void> loadRemote() async {
@@ -149,6 +150,99 @@ class RoomsController extends ChangeNotifier {
     notifyListeners();
   }
 
+  List<CourseStop> _courseFromResponse(Map<String, dynamic> response) {
+    final plan = response['plan'];
+    if (plan is! Map<String, dynamic>) return const [];
+    final raw = plan['stops'];
+    if (raw is! List) return const [];
+    return raw.whereType<Map<String, dynamic>>().map((entry) => CourseStop(
+      time: entry['start_time']?.toString() ?? '',
+      title: entry['name']?.toString() ?? entry['activity']?.toString() ?? '장소',
+      description: entry['address']?.toString() ?? '',
+    )).toList();
+  }
+
+  Future<void> syncRoom(String id) async {
+    final room = this.room(id);
+    final api = PlanitApi.instance;
+    final details = await api.request('GET', '/rooms/${Uri.encodeComponent(id)}');
+    final members = (details['members'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map((entry) => RoomMember(
+            name: entry['uid']?.toString() ?? '사용자',
+            submitted: entry['submitted'] == true))
+        .toList();
+    Map<String, dynamic>? recommendation;
+    try {
+      recommendation = await api.request(
+        'GET', '/rooms/${Uri.encodeComponent(id)}/recommendation');
+    } on PlanitApiException catch (error) {
+      if (error.statusCode != 404) rethrow;
+    }
+    final fresh = recommendation != null && recommendation['is_stale'] != true;
+    if (fresh) {
+      final revision = recommendation['source_revision']?.toString();
+      if (revision != null) _recommendationRevisions[id] = revision;
+    }
+    final course = fresh ? _courseFromResponse(recommendation!) : <CourseStop>[];
+    _replaceRoom(PlanRoom(
+      id: room.id,
+      title: room.title,
+      date: room.date,
+      region: room.region,
+      inviteCode: room.inviteCode,
+      members: members.isEmpty ? room.members : members,
+      capacity: room.capacity,
+      status: room.status == RoomStatus.confirmed
+          ? RoomStatus.confirmed
+          : course.isEmpty ? RoomStatus.collecting : RoomStatus.recommended,
+      course: course,
+    ));
+  }
+
+  Future<void> generateRecommendation(String id) async {
+    final response = await PlanitApi.instance.request(
+        'POST', '/rooms/${Uri.encodeComponent(id)}/recommend');
+    final revision = response['source_revision']?.toString();
+    if (revision != null) _recommendationRevisions[id] = revision;
+    final previous = room(id);
+    _replaceRoom(previous.copyWith(
+      status: RoomStatus.recommended,
+      course: _courseFromResponse(response),
+    ));
+  }
+
+  Future<void> confirmRemote(String id) async {
+    var revision = _recommendationRevisions[id];
+    if (revision == null) {
+      await syncRoom(id);
+      revision = _recommendationRevisions[id];
+    }
+    if (revision == null) {
+      throw const PlanitApiException('최신 AI 추천을 먼저 생성해야 합니다.');
+    }
+    final previous = room(id);
+    final response = await PlanitApi.instance.request(
+      'POST', '/rooms/${Uri.encodeComponent(id)}/appointment/confirm',
+      body: {'recommendation_revision': revision},
+    );
+    final record = response['appointment'];
+    DateTime? when = previous.date;
+    if (record is Map<String, dynamic>) {
+      when = DateTime.tryParse(record['starts_at']?.toString() ?? '')?.toLocal()
+          ?? when;
+      _scheduleVersions[id] = (record['version'] as num?)?.toInt() ?? 1;
+    }
+    _replaceRoom(previous.copyWith(status: RoomStatus.confirmed, date: when));
+  }
+
+  void _replaceRoom(PlanRoom updated) {
+    final index = _rooms.indexWhere((room) => room.id == updated.id);
+    if (index < 0) return;
+    _rooms[index] = updated;
+    notifyListeners();
+  }
+
   Future<PlanRoom> createRemoteRoom(String name, int capacity) async {
     final data = await PlanitApi.instance.request('POST', '/rooms', body: {
       'title': name,
@@ -178,18 +272,18 @@ class RoomsController extends ChangeNotifier {
   Future<void> saveRemoteSchedule(String id, DateTime? when) async {
     final api = PlanitApi.instance;
     final room = this.room(id);
+    if (room.status == RoomStatus.confirmed && when == null) {
+      throw const PlanitApiException('확정된 약속은 날짜를 해제할 수 없습니다.');
+    }
     final response = room.status == RoomStatus.confirmed
         ? await api.request('PATCH', '/rooms/$id/appointment/date', body: {
             'date': '${when?.year.toString().padLeft(4, '0')}-${when?.month.toString().padLeft(2, '0')}-${when?.day.toString().padLeft(2, '0')}',
             'version': _scheduleVersions[id] ?? 1,
           })
         : await api.request('PUT', '/rooms/$id/schedule', body: {
-            'starts_at': when?.toIso8601String(),
+            'starts_at': when?.toUtc().toIso8601String(),
             'version': _scheduleVersions[id] ?? 0,
           });
-    if (room.status == RoomStatus.confirmed && when == null) {
-      throw const PlanitApiException('확정된 약속은 날짜를 해제할 수 없습니다.');
-    }
     final snapshot = response['schedule'] ?? response['appointment'];
     if (snapshot is Map<String, dynamic>) {
       _scheduleVersions[id] = (snapshot['version'] as num?)?.toInt() ?? 0;
