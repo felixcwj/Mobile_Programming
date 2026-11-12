@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -13,6 +14,7 @@ class PlanitApi {
   String? _accessToken;
   String? _currentUid;
   http.Client _client = http.Client();
+  static const Duration requestTimeout = Duration(seconds: 25);
   String? _testBaseUrl;
 
   /// Inject a mock HTTP transport in tests; not used by production screens.
@@ -60,25 +62,30 @@ class PlanitApi {
     final uri = _url(path, query);
     late http.Response response;
     try {
+      final Future<http.Response> operation;
       switch (method) {
         case 'GET':
-          response = await _client.get(uri, headers: headers);
+          operation = _client.get(uri, headers: headers);
         case 'POST':
-          response = await _client.post(uri, headers: headers,
+          operation = _client.post(uri, headers: headers,
               body: body == null ? null : jsonEncode(body));
         case 'PUT':
-          response = await _client.put(uri, headers: headers,
+          operation = _client.put(uri, headers: headers,
               body: body == null ? null : jsonEncode(body));
         case 'PATCH':
-          response = await _client.patch(uri, headers: headers,
+          operation = _client.patch(uri, headers: headers,
               body: body == null ? null : jsonEncode(body));
         case 'DELETE':
-          response = await _client.delete(uri, headers: headers);
+          operation = _client.delete(uri, headers: headers);
         default:
           throw const PlanitApiException('지원하지 않는 HTTP 메서드입니다.');
       }
+      response = await operation.timeout(requestTimeout);
+    } on PlanitApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const PlanitApiException('서버 응답이 지연되고 있습니다. 연결을 확인한 뒤 다시 시도해 주세요.');
     } catch (error) {
-      if (error is PlanitApiException) rethrow;
       throw PlanitApiException('서버 연결에 실패했습니다: $error');
     }
     Object? decoded;
