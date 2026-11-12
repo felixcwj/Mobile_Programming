@@ -135,6 +135,23 @@ class RoomDetailScreen extends StatelessWidget {
         appBar: AppBar(
           title: const Text('우리의 약속'),
           backgroundColor: roomBackground,
+          actions: [
+            IconButton(
+              tooltip: '방 정보 새로고침',
+              onPressed: () async {
+                try {
+                  await controller.syncRoom(roomId);
+                } catch (error) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('새로고침에 실패했습니다: $error')),
+                    );
+                  }
+                }
+              },
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
         ),
         body: SafeArea(
           child: Center(
@@ -176,7 +193,7 @@ class RoomDetailScreen extends StatelessWidget {
                           room.date == null ? '약속 날짜 정하기' : '약속 날짜 변경',
                         ),
                       ),
-                      if (room.date != null)
+                      if (room.date != null && room.status != RoomStatus.confirmed)
                         TextButton(
                           onPressed: () => _removeSchedule(context),
                           child: const Text('일정 해제'),
