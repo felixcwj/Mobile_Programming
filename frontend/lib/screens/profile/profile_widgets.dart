@@ -251,6 +251,6 @@ class ProfileSaveButton extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2),
           )
         : const Icon(Icons.check, size: 20),
-    label: Text(saving ? '저장 중…' : '변경사항 저장'),
+    label: Text(saving ? '저장 중…' : '저장하기'),
   );
 }
