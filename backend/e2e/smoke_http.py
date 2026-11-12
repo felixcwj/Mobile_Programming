@@ -236,11 +236,11 @@ did = proposed["decision"]["decision_id"]
 listing = request("GET", f"/rooms/{vrid}/decisions", token=ta)["decisions"]
 assert any(d["decision_id"] == did for d in listing)
 before_vote = request("GET", f"/rooms/{vrid}/preferences", token=ta)
-assert before_vote["preferences"][b]["budget"] == 30000
+assert next(entry["preferences"]["budget"] for entry in before_vote["members"] if entry["uid"] == b) == 30000
 accepted = request("POST", f"/rooms/{vrid}/decisions/{did}/vote",
                    token=ta, body={"approve": True})
 assert accepted["decision"]["status"] == "approved"
-assert request("GET", f"/rooms/{vrid}/preferences", token=ta)["preferences"][b]["budget"] == 55000
+assert next(entry["preferences"]["budget"] for entry in request("GET", f"/rooms/{vrid}/preferences", token=ta)["members"] if entry["uid"] == b) == 55000
 request("POST", f"/rooms/{vrid}/decisions/{did}/vote",
         token=ta, body={"approve": True}, status=409)
 checks.append("Real unanimous approval preserves old conditions until vote, then commits")
@@ -252,7 +252,7 @@ reject_id = rejected["decision"]["decision_id"]
 rejection = request("POST", f"/rooms/{vrid}/decisions/{reject_id}/vote",
                     token=ta, body={"approve": False})
 assert rejection["decision"]["status"] == "rejected"
-assert request("GET", f"/rooms/{vrid}/preferences", token=ta)["preferences"][b]["budget"] == 55000
+assert next(entry["preferences"]["budget"] for entry in request("GET", f"/rooms/{vrid}/preferences", token=ta)["members"] if entry["uid"] == b) == 55000
 checks.append("Real rejection refuses proposed changes without overwriting preferences")
 
 region_proposal = request("PATCH", f"/rooms/{vrid}/meeting", token=tb,
