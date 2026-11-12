@@ -37,7 +37,7 @@ def account(number):
     identifier = f"qa{prefix}{number}"
     password = f"Qatest_{prefix}a123"
     nickname = f"QA-{prefix}-{number}"
-    email = f"{identifier}@example.test"
+    email = f"{identifier}@example.com"
     request("POST", "/auth/signup", body={
         "id": identifier, "password": password, "password_confirm": password,
         "nickname": nickname, "email": email,
@@ -63,7 +63,7 @@ assert request("GET", "/auth/check-id", params={"id": a})["available"] is False
 assert request("GET", "/auth/check-id", params={"id": "freeuser42"})["available"] is True
 request("POST", "/auth/signup", body={
     "id": a, "password": password_a, "password_confirm": password_a,
-    "nickname": f"Different{prefix}", "email": "different@example.test",
+    "nickname": f"Different{prefix}", "email": "different@example.com",
     "name": "Duplicate", "phone": "01012345678",
 }, status=409)
 checks.append("Username uniqueness and validation")
