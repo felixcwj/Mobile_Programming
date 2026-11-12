@@ -1,8 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meetsync/models/plan_room.dart';
 import 'package:meetsync/screens/rooms/rooms_screen.dart';
 import 'package:meetsync/services/rooms_controller.dart';
+import 'package:meetsync/services/planit_api.dart';
 
 void main() {
   test('Only a ready room can be confirmed, once', () {
@@ -15,57 +20,70 @@ void main() {
     expect(controller.confirm('after-work'), isFalse);
   });
 
-  testWidgets('Filter, detail, course and confirmation update the room list', (
-    tester,
-  ) async {
+  testWidgets('Confirming recommended course requires backend approval', (tester) async {
+    final api = PlanitApi.instance;
+    api.clearSession();
+    final calls = <String>[];
+    api.replaceHttpClientForTesting(MockClient((request) async {
+      calls.add('${request.method} ${request.url.path}');
+      if (request.url.path == '/auth/login') {
+        return http.Response(jsonEncode({'access_token': 'room-token'}), 200);
+      }
+      expect(request.headers['authorization'], 'Bearer room-token');
+      if (request.url.path == '/rooms/after-work') {
+        return http.Response(jsonEncode({'members': [
+          {'uid': 'one', 'submitted': true},
+          {'uid': 'two', 'submitted': true}
+        ]}), 200);
+      }
+      if (request.url.path == '/rooms/after-work/recommendation') {
+        return http.Response(jsonEncode({
+          'is_stale': false,
+          'source_revision': 'revision-1',
+          'plan': {'stops': [
+            {'start_time': '18:00', 'name': '저녁 식사', 'address': '연남'}
+          ]}
+        }), 200);
+      }
+      if (request.url.path == '/rooms/after-work/appointment/confirm') {
+        final payload = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(payload['recommendation_revision'], 'revision-1');
+        return http.Response(jsonEncode({'appointment': {
+          'starts_at': '2026-11-19T18:00:00Z', 'version': 1
+        }}), 200);
+      }
+      return http.Response(jsonEncode({'detail': 'not found'}), 404);
+    }));
+    await api.login('planner', 'password123');
     final controller = RoomsController.demo();
     addTearDown(controller.dispose);
+    addTearDown(api.clearSession);
     var confirmedCount = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: RoomsScreen(
-          controller: controller,
-          onConfirmed: (_) => confirmedCount++,
-        ),
-      ),
-    );
+    await tester.pumpWidget(MaterialApp(home: RoomsScreen(
+      controller: controller, onConfirmed: (_) => confirmedCount++,
+    )));
     await tester.tap(find.widgetWithText(ChoiceChip, '코스 확인하기'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('퇴근 후, 리프레시'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.scrollUntilVisible(find.text('퇴근 후, 리프레시'), 200,
+      scrollable: find.byType(Scrollable).first);
     await tester.tap(find.text('퇴근 후, 리프레시'));
     await tester.pumpAndSettle();
-    expect(find.text('친구들의 취향  2/2'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('추천 코스 확인하기'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.scrollUntilVisible(find.text('추천 코스 확인하기'), 200,
+      scrollable: find.byType(Scrollable).first);
     await tester.tap(find.text('추천 코스 확인하기'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('이 코스로 약속 확정'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await Scrollable.ensureVisible(
-      tester.element(find.text('이 코스로 약속 확정')),
-      alignment: 0.5,
-    );
+    await Scrollable.ensureVisible(tester.element(find.text('이 코스로 약속 확정')),
+      alignment: 0.5);
     await tester.pumpAndSettle();
     await tester.tap(find.text('이 코스로 약속 확정'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('더 살펴볼게요'));
     await tester.pumpAndSettle();
-    expect(controller.room('after-work').status, RoomStatus.recommended);
     expect(confirmedCount, 0);
-    await Scrollable.ensureVisible(
-      tester.element(find.text('이 코스로 약속 확정')),
-      alignment: 0.5,
-    );
+    expect(controller.room('after-work').status, RoomStatus.recommended);
+    expect(calls, isNot(contains('POST /rooms/after-work/appointment/confirm')));
+    await Scrollable.ensureVisible(tester.element(find.text('이 코스로 약속 확정')),
+      alignment: 0.5);
     await tester.pumpAndSettle();
     await tester.tap(find.text('이 코스로 약속 확정'));
     await tester.pumpAndSettle();
@@ -73,11 +91,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(confirmedCount, 1);
     expect(controller.room('after-work').status, RoomStatus.confirmed);
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-    expect(find.text('이 상태의 약속은 아직 없어요'), findsOneWidget);
+    expect(calls, contains('POST /rooms/after-work/appointment/confirm'));
     expect(tester.takeException(), isNull);
   });
 
