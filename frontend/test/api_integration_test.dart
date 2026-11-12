@@ -67,10 +67,10 @@ void main() {
         return http.Response(jsonEncode({'room_id': 'server-generated-id', 'joined': true}), 200);
       }
       if (request.url.path == '/rooms') {
-        return http.Response(jsonEncode({'rooms': [
+        return http.Response.bytes(utf8.encode(jsonEncode({'rooms': [
           {'room_id': 'server-generated-id', 'title': '나들이', 'invite_code': 'AB2#C@!',
            'member_uids': ['user1', 'user2'], 'max_members': 3}
-        ]}), 200);
+        ]})), 200, headers: {'content-type': 'application/json; charset=utf-8'});
       }
       if (request.url.path == '/calendar/room-appointments') {
         return http.Response(jsonEncode({'events': []}), 200);
