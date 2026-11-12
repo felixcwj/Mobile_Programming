@@ -18,6 +18,7 @@ class RoomDetailScreen extends StatelessWidget {
   final String roomId;
   final RoomsController controller;
   final ValueChanged<PlanRoom>? onConfirmed;
+  static final Set<String> _generatingRooms = <String>{};
 
   Future<void> _pickSchedule(BuildContext context, PlanRoom room) async {
     final date = await showDatePicker(
@@ -119,6 +120,7 @@ class RoomDetailScreen extends StatelessWidget {
   }
 
   Future<void> _generateAi(BuildContext context) async {
+    if (!_generatingRooms.add(roomId)) return;
     try {
       await controller.generateRecommendation(roomId);
       if (!context.mounted) return;
@@ -130,6 +132,8 @@ class RoomDetailScreen extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('AI 추천에 실패했습니다: $error')));
       }
+    } finally {
+      _generatingRooms.remove(roomId);
     }
   }
 
