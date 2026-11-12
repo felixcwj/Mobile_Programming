@@ -303,7 +303,8 @@ assert deleting["status"] == "pending" and deleting["due_at"]
 assert request("GET", "/mypage/deletion", token=tc)["status"] == "pending"
 request("POST", "/mypage/deletion", token=tc, body={"password": password_c}, status=409)
 cancelled = request("DELETE", "/mypage/deletion", token=tc)
-assert cancelled["status"] == "none"
+assert cancelled["status"] == "cancelled"
+assert request("GET", "/mypage/deletion", token=tc)["status"] == "none"
 checks.append("Real password-verified 30-day deletion request, duplicate protection and cancellation")
 
 print("REAL FIREBASE EMULATOR HTTP E2E PASSED")
