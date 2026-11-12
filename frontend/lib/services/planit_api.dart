@@ -11,6 +11,7 @@ class PlanitApi {
   static const configuredBaseUrl =
       String.fromEnvironment('PLANIT_API_BASE_URL', defaultValue: '');
   String? _accessToken;
+  String? _currentUid;
   http.Client _client = http.Client();
   String? _testBaseUrl;
 
@@ -21,7 +22,11 @@ class PlanitApi {
   }
 
   bool get hasSession => _accessToken != null;
-  void clearSession() => _accessToken = null;
+  String? get currentUid => _currentUid;
+  void clearSession() {
+    _accessToken = null;
+    _currentUid = null;
+  }
 
   Uri _url(String path, [Map<String, String>? query]) {
     final baseUrl = _testBaseUrl ?? configuredBaseUrl;
@@ -105,6 +110,7 @@ class PlanitApi {
       throw const PlanitApiException('로그인 토큰을 받지 못했습니다.');
     }
     _accessToken = token;
+    _currentUid = result['uid']?.toString() ?? id.toLowerCase();
   }
 
   Future<void> signup({
