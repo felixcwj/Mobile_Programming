@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meetsync/models/plan_room.dart';
 import 'package:meetsync/screens/rooms/rooms_screen.dart';
+import 'package:meetsync/screens/rooms/ai_result_screen.dart';
 import 'package:meetsync/services/rooms_controller.dart';
 import 'package:meetsync/services/planit_api.dart';
 
@@ -20,7 +21,8 @@ void main() {
     expect(controller.confirm('after-work'), isFalse);
   });
 
-  testWidgets('Confirming recommended course requires backend approval', (tester) async {
+  testWidgets('Confirming a recommended course requires backend approval',
+      (tester) async {
     final api = PlanitApi.instance;
     api.clearSession();
     final calls = <String>[];
@@ -41,7 +43,7 @@ void main() {
           'is_stale': false,
           'source_revision': 'revision-1',
           'plan': {'stops': [
-            {'start_time': '18:00', 'name': '저녁 식사', 'address': '연남'}
+            {'start_time': '18:00', 'name': 'Dinner', 'address': 'Yeonnam'}
           ]}
         }), 200);
       }
@@ -59,33 +61,23 @@ void main() {
     addTearDown(controller.dispose);
     addTearDown(api.clearSession);
     var confirmedCount = 0;
-    await tester.pumpWidget(MaterialApp(home: RoomsScreen(
-      controller: controller, onConfirmed: (_) => confirmedCount++,
-    )));
-    await tester.tap(find.widgetWithText(ChoiceChip, '코스 확인하기'));
+    await tester.pumpWidget(MaterialApp(
+      home: AiResultScreen(roomId: 'after-work',
+        controller: controller,
+        onConfirmed: (_) => confirmedCount++),
+    ));
+    final confirm = find.text('이 코스로 약속 확정');
+    await tester.ensureVisible(confirm);
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('퇴근 후, 리프레시'), 200,
-      scrollable: find.byType(Scrollable).first);
-    await tester.tap(find.text('퇴근 후, 리프레시'));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('추천 코스 확인하기'), 200,
-      scrollable: find.byType(Scrollable).first);
-    await tester.tap(find.text('추천 코스 확인하기'));
-    await tester.pumpAndSettle();
-    await Scrollable.ensureVisible(tester.element(find.text('이 코스로 약속 확정')),
-      alignment: 0.5);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('이 코스로 약속 확정'));
+    await tester.tap(confirm);
     await tester.pumpAndSettle();
     await tester.tap(find.text('더 살펴볼게요'));
     await tester.pumpAndSettle();
     expect(confirmedCount, 0);
     expect(controller.room('after-work').status, RoomStatus.recommended);
     expect(calls, isNot(contains('POST /rooms/after-work/appointment/confirm')));
-    await Scrollable.ensureVisible(tester.element(find.text('이 코스로 약속 확정')),
-      alignment: 0.5);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('이 코스로 약속 확정'));
+    await tester.ensureVisible(confirm);
+    await tester.tap(confirm);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '약속 확정'));
     await tester.pumpAndSettle();
