@@ -49,5 +49,5 @@ if [[ "${PLANIT_E2E_RUN_DART:-0}" == "1" ]]; then
   (cd frontend && PLANIT_E2E_URL=http://127.0.0.1:8765 dart run tool/live_api_e2e.dart)
 fi
 if [[ "${PLANIT_E2E_RUN_BROWSER:-0}" == "1" ]]; then
-  (cd frontend && flutter test --platform chrome --dart-define=PLANIT_API_BASE_URL=http://127.0.0.1:8765 test/browser_live_widget_test.dart)
+  (cd frontend && flutter test --reporter expanded --platform chrome --dart-define=PLANIT_API_BASE_URL=http://127.0.0.1:8765 test/browser_live_widget_test.dart)
 fi
