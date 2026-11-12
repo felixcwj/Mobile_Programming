@@ -28,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _roomsController = RoomsController(rooms: []);
   late final CalendarController _calendarController;
   late final ProfileRepository _profileRepository;
+  bool _openingCalendar = false;
 
   List<PlanRoom> get _rooms => _roomsController.rooms;
 
@@ -85,20 +86,33 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openCalendar() async {
+    if (_openingCalendar) return;
+    _openingCalendar = true;
     try {
-      await _calendarController.loadRemote();
-    } catch (error) {
-      if (mounted) _showMessage('캘린더를 새로고침하지 못했습니다: $error');
-    }
-    if (!mounted) return;
-    Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => CalendarScreen(
-          controller: _calendarController,
-          onOpenRoom: (id) => _openRoom(_roomsController.room(id)),
+      try {
+        await _calendarController.loadRemote();
+      } catch (error) {
+        if (mounted) _showMessage('캘린더를 새로고침하지 못했습니다: $error');
+      }
+      if (!mounted) return;
+      Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => CalendarScreen(
+            controller: _calendarController,
+            onOpenRoom: (id) {
+              final matches = _roomsController.rooms.where((room) => room.id == id);
+              if (matches.isEmpty) {
+                _showMessage('약속방을 찾을 수 없습니다. 방 목록을 새로고침해 주세요.');
+                return;
+              }
+              _openRoom(matches.first);
+            },
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      _openingCalendar = false;
+    }
   }
 
   void _showAddMenu() {
