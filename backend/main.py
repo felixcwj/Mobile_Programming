@@ -1008,10 +1008,8 @@ async def _openrouter_course(conditions: dict, candidates: list[dict]) -> dict:
     # usable completion. Do not spend more free requests on rate-limit errors.
     for attempt in range(2):
         request_payload = dict(payload)
-        if attempt == 1:
-            # Some reasoning models consume the entire completion budget before
-            # returning final text. Ask for minimal reasoning on the retry.
-            request_payload['reasoning'] = {'effort': 'none'}
+        # Do not force reasoning.effort=none: reasoning may be mandatory on
+        # the free router's selected model, yielding HTTP 400.
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=120, write=20, pool=10)) as client:
                 response = await client.post(url, headers=headers, json=request_payload)
@@ -1048,7 +1046,14 @@ async def _openrouter_course(conditions: dict, candidates: list[dict]) -> dict:
                 raise HTTPException(429, detail)
             if response.status_code == 402:
                 raise HTTPException(402, 'OpenRouter 계정의 무료 이용 한도 또는 크레딧을 확인하세요.')
-            print('OpenRouter HTTP failure:', {'status': response.status_code, 'model': OPENROUTER_MODEL})
+            error_type = str(error.get('error_type') or metadata.get('error_type') or '')[:60]
+            error_message = str(error.get('message') or '')[:180]
+            print('OpenRouter HTTP failure:', {
+                'status': response.status_code, 'model': OPENROUTER_MODEL,
+                'error_type': error_type, 'message': error_message,
+            })
+            if response.status_code == 400:
+                raise HTTPException(502, f'OpenRouter 모델 요청 형식 오류(HTTP 400): {error_message or "백엔드 로그 확인 필요"}')
             raise HTTPException(502, f'OpenRouter 요청 실패 (HTTP {response.status_code}). API 제공업체 상태를 확인하세요.')
 
         try:
@@ -1077,6 +1082,8 @@ async def _openrouter_course(conditions: dict, candidates: list[dict]) -> dict:
                     'attempt': attempt + 1,
                 }
                 print('OpenRouter empty completion:', diagnostic)
+                if choice.get('finish_reason') == 'length':
+                    raise HTTPException(502, 'OpenRouter 모델이 출력 토큰을 소진해 결과 텍스트를 생성하지 못했습니다. 백엔드 로그를 확인하세요.')
                 if attempt == 0:
                     continue
                 raise HTTPException(502, 'OpenRouter가 두 번 연속 최종 텍스트를 반환하지 않았습니다. 백엔드 로그의 모델/종료 사유를 확인하세요.')
