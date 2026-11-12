@@ -5,6 +5,7 @@ import '../../models/plan_room.dart';
 import '../../services/rooms_controller.dart';
 import 'ai_result_screen.dart';
 import 'room_preferences_screen.dart';
+import 'room_votes_screen.dart';
 import 'room_widgets.dart';
 
 class RoomDetailScreen extends StatelessWidget {
@@ -277,6 +278,16 @@ class RoomDetailScreen extends StatelessWidget {
                     label: '내 약속 조건 입력·수정',
                     icon: Icons.edit_note_outlined,
                     onPressed: () => _editPreferences(context),
+                  ),
+                  const SizedBox(height: 10),
+                  RoomAction(
+                    label: '변경 제안·투표 보기',
+                    icon: Icons.how_to_vote_outlined,
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => RoomVotesScreen(roomId: roomId),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   RoomAction(
