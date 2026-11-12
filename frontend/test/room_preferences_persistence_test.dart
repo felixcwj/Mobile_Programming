@@ -55,6 +55,9 @@ void main() {
     expect(find.byKey(const ValueKey('roomDeparture')), findsNothing);
     expect(paths, contains('GET /rooms/room1/preferences'));
     expect(find.text('특정 장소'), findsOneWidget);
+    await tester.tap(find.text('중간 지점'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('roomDeparture')), findsOneWidget);
   });
 
   testWidgets('Room preference retrieval failure blocks overwriting existing data', (tester) async {
