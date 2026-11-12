@@ -28,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final _roomsController = RoomsController(rooms: []);
   late final CalendarController _calendarController;
-  late final MemoryProfileRepository _profileRepository;
+  late final ProfileRepository _profileRepository;
 
   List<PlanRoom> get _rooms => _roomsController.rooms;
 
@@ -37,15 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _calendarController = CalendarController(roomsController: _roomsController);
     _loadServerData();
-    // Local session only, until the authentication/profile APIs are connected.
-    _profileRepository = MemoryProfileRepository(
-      initialProfile: UserProfile(
-        userId: widget.loginId,
-        nickname: '플래너',
-        email: '',
-        loginId: widget.loginId,
-      ),
-    );
+    _profileRepository = ServerProfileRepository(loginId: widget.loginId);
   }
 
   Future<void> _loadServerData() async {
