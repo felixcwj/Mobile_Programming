@@ -12,6 +12,8 @@ class PlanitApi {
   static const configuredBaseUrl =
       String.fromEnvironment('PLANIT_API_BASE_URL', defaultValue: '');
   String? _accessToken;
+  String? _refreshToken;
+  Future<void>? _refreshInFlight;
   String? _currentUid;
   http.Client _client = http.Client();
   static const Duration requestTimeout = Duration(seconds: 25);
@@ -27,6 +29,7 @@ class PlanitApi {
   String? get currentUid => _currentUid;
   void clearSession() {
     _accessToken = null;
+    _refreshToken = null;
     _currentUid = null;
   }
 
@@ -50,6 +53,7 @@ class PlanitApi {
     Map<String, String>? query,
     Object? body,
     bool authenticated = true,
+    bool retryAuthentication = true,
   }) async {
     final headers = <String, String>{'Accept': 'application/json'};
     if (body != null) headers['Content-Type'] = 'application/json';
@@ -96,6 +100,16 @@ class PlanitApi {
     } catch (_) {
       throw PlanitApiException('서버 응답을 해석할 수 없습니다. HTTP ${response.statusCode}');
     }
+    if (response.statusCode == 401 &&
+        authenticated &&
+        retryAuthentication &&
+        _refreshToken != null) {
+      await _refreshSession();
+      return request(
+        method, path, query: query, body: body,
+        authenticated: authenticated, retryAuthentication: false,
+      );
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final detail = decoded is Map ? decoded['detail'] : null;
       final message = detail is String
@@ -119,7 +133,49 @@ class PlanitApi {
       throw const PlanitApiException('로그인 토큰을 받지 못했습니다.');
     }
     _accessToken = token;
+    _refreshToken = result['refresh_token']?.toString();
     _currentUid = result['uid']?.toString() ?? id.toLowerCase();
+  }
+
+  Future<void> _refreshSession() async {
+    final existing = _refreshInFlight;
+    if (existing != null) {
+      return existing;
+    }
+    final token = _refreshToken;
+    if (token == null) {
+      throw const PlanitApiException('로그인이 만료됐습니다. 다시 로그인해 주세요.', statusCode: 401);
+    }
+    final future = _performRefresh(token);
+    _refreshInFlight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_refreshInFlight, future)) _refreshInFlight = null;
+    }
+  }
+
+  Future<void> _performRefresh(String oldToken) async {
+    try {
+      final result = await request('POST', '/auth/refresh',
+        authenticated: false, retryAuthentication: false,
+        body: {'refresh_token': oldToken});
+      final access = result['access_token'];
+      final refresh = result['refresh_token'];
+      if (access is! String || access.isEmpty ||
+          refresh is! String || refresh.isEmpty) {
+        throw const PlanitApiException('로그인 갱신 응답이 올바르지 않습니다.');
+      }
+      if (_refreshToken != oldToken) return;
+      _accessToken = access;
+      _refreshToken = refresh;
+      _currentUid = result['uid']?.toString() ?? _currentUid;
+    } catch (error) {
+      if (_refreshToken == oldToken) clearSession();
+      if (error is PlanitApiException && error.statusCode != 401) rethrow;
+      throw const PlanitApiException(
+        '로그인 인증이 만료됐습니다. 다시 로그인해 주세요.', statusCode: 401);
+    }
   }
 
   Future<void> signup({
