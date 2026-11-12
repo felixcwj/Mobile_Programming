@@ -5,7 +5,7 @@ set -euo pipefail
 # This never modifies the original planit_front repository.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE="https://github.com/yhooni29/planit_front.git"
-REVISION="c4becdf0010dc"
+REVISION="c4becdf0010d"
 TEMP="$(mktemp -d)"
 trap 'rm -rf "$TEMP"' EXIT
 
