@@ -72,7 +72,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(confirm);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('더 살펴볼게요'));
+    await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();
     expect(confirmedCount, 0);
     expect(controller.room('after-work').status, RoomStatus.recommended);
