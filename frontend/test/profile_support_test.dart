@@ -128,7 +128,7 @@ void main() {
       expect(uri!.path, 'support@example.com');
       expect(uri!.queryParameters['subject'], '[플랜잇 1:1 문의] 문의 & 도움 + 질문');
       expect(uri!.queryParameters['body'], '첫 줄 + 공백\n다음 줄 & 내용');
-      expect(find.text('메일 앱을 열지 못했어요. 문의 내용을 복사해 직접 보내주세요.'), findsOneWidget);
+      expect(find.text('메일 앱을 열지 못했어요. 메일 앱 설정을 확인해 주세요.'), findsOneWidget);
       final state = tester.state(find.byType(SupportScreen));
       expect(state.mounted, isTrue);
       await reveal(tester, find.byKey(const ValueKey('supportSubject')));
