@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/plan_room.dart';
+import 'planit_api.dart';
 
 /// Local preview state. No network, LLM, authentication or calendar persistence.
 /// Create once in the parent and dispose when that parent is disposed.
@@ -93,6 +94,109 @@ class RoomsController extends ChangeNotifier {
   }
 
   final List<PlanRoom> _rooms;
+  final Map<String, int> _scheduleVersions = {};
+
+  /// Refreshes actual rooms and confirmed/pending dates from the backend.
+  Future<void> loadRemote() async {
+    final api = PlanitApi.instance;
+    final response = await api.request('GET', '/rooms');
+    final calendar = await api.request('GET', '/calendar/room-appointments');
+    final raw = response['rooms'] as List<dynamic>? ?? [];
+    final items = calendar['events'] as List<dynamic>? ?? [];
+    final byRoom = <String, Map<String, dynamic>>{};
+    for (final value in items) {
+      if (value is! Map<String, dynamic>) continue;
+      final id = value['room_id']?.toString();
+      if (id == null) continue;
+      final current = byRoom[id];
+      if (current == null ||
+          DateTime.parse(value['starts_at'].toString())
+              .isAfter(DateTime.parse(current['starts_at'].toString()))) {
+        byRoom[id] = value;
+      }
+    }
+    final loaded = <PlanRoom>[];
+    _scheduleVersions.clear();
+    for (final value in raw) {
+      if (value is! Map<String, dynamic>) continue;
+      final id = value['room_id']?.toString();
+      if (id == null) continue;
+      final event = byRoom[id];
+      DateTime? when;
+      if (event != null) {
+        when = DateTime.parse(event['starts_at'].toString()).toLocal();
+        _scheduleVersions[id] = (event['version'] as num?)?.toInt() ?? 0;
+      }
+      final members = (value['member_uids'] as List<dynamic>? ?? [])
+          .map((uid) => RoomMember(name: uid.toString(), submitted: false))
+          .toList();
+      loaded.add(PlanRoom(
+        id: id,
+        title: value['title']?.toString() ?? '새 약속방',
+        date: when,
+        region: '지역 미정',
+        inviteCode: value['invite_code']?.toString() ?? '',
+        members: members,
+        capacity: (value['max_members'] as num?)?.toInt() ?? 8,
+        status: event?['status'] == 'confirmed'
+            ? RoomStatus.confirmed
+            : RoomStatus.collecting,
+      ));
+    }
+    _rooms
+      ..clear()
+      ..addAll(loaded);
+    notifyListeners();
+  }
+
+  Future<PlanRoom> createRemoteRoom(String name, int capacity) async {
+    final data = await PlanitApi.instance.request('POST', '/rooms', body: {
+      'title': name,
+      'max_members': capacity,
+    });
+    final id = data['room_id']?.toString();
+    if (id == null) throw const PlanitApiException('생성된 방 ID가 없습니다.');
+    final room = PlanRoom(
+      id: id,
+      title: name,
+      region: '지역 미정',
+      inviteCode: data['invite_code']?.toString() ?? '',
+      capacity: capacity,
+      members: const [RoomMember(name: '나', submitted: false)],
+    );
+    addRoom(room);
+    return room;
+  }
+
+  Future<void> joinRemoteRoom(String inviteCode) async {
+    await PlanitApi.instance.request('POST', '/rooms/join', body: {
+      'invite_code': inviteCode,
+    });
+    await loadRemote();
+  }
+
+  Future<void> saveRemoteSchedule(String id, DateTime? when) async {
+    final api = PlanitApi.instance;
+    final room = this.room(id);
+    final response = room.status == RoomStatus.confirmed
+        ? await api.request('PATCH', '/rooms/$id/appointment/date', body: {
+            'date': '${when?.year.toString().padLeft(4, '0')}-${when?.month.toString().padLeft(2, '0')}-${when?.day.toString().padLeft(2, '0')}',
+            'version': _scheduleVersions[id] ?? 1,
+          })
+        : await api.request('PUT', '/rooms/$id/schedule', body: {
+            'starts_at': when?.toIso8601String(),
+            'version': _scheduleVersions[id] ?? 0,
+          });
+    if (room.status == RoomStatus.confirmed && when == null) {
+      throw const PlanitApiException('확정된 약속은 날짜를 해제할 수 없습니다.');
+    }
+    final snapshot = response['schedule'] ?? response['appointment'];
+    if (snapshot is Map<String, dynamic>) {
+      _scheduleVersions[id] = (snapshot['version'] as num?)?.toInt() ?? 0;
+    }
+    setDate(id, when);
+  }
+
   List<PlanRoom> get rooms => List.unmodifiable(_rooms);
   PlanRoom room(String id) => _rooms.firstWhere((room) => room.id == id);
 
