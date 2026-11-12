@@ -18,16 +18,17 @@ class CalendarController extends ChangeNotifier {
   bool _serverRoomEventsLoaded = false;
   bool _disposed = false;
   int _loadGeneration = 0;
+  int _activeYear = DateTime.now().year;
 
   String newEventId() => 'personal-${_nextId++}';
 
   /// Loads private and recurring events from the current Firebase-backed user.
-  Future<void> loadRemote() async {
+  Future<void> loadRemote({int? year}) async {
     if (_disposed) return;
     final generation = ++_loadGeneration;
-    final year = DateTime.now().year;
-    final start = DateTime(year, 1, 1).toUtc().toIso8601String();
-    final end = DateTime(year + 1, 1, 1).toUtc().toIso8601String();
+    final targetYear = year ?? _activeYear;
+    final start = DateTime(targetYear, 1, 1).toUtc().toIso8601String();
+    final end = DateTime(targetYear + 1, 1, 1).toUtc().toIso8601String();
     final api = PlanitApi.instance;
     final current = await api.request('GET', '/calendar/events',
         query: {'starts_from': start, 'starts_before': end});
@@ -105,6 +106,7 @@ class CalendarController extends ChangeNotifier {
       ..clear()
       ..addAll(remoteRoomEvents);
     _serverRoomEventsLoaded = true;
+    _activeYear = targetYear;
     notifyListeners();
   }
 
