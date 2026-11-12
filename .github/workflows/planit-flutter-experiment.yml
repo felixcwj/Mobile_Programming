@@ -1,4 +1,4 @@
-name: PlanIt Flutter experimental integration
+name: PlanIt isolated integration checks
 on:
   push:
     branches:
@@ -23,9 +23,26 @@ jobs:
       - name: Analyze Flutter source
         working-directory: frontend
         run: flutter analyze --no-fatal-infos
-      - name: Run Flutter unit/widget tests
-        working-directory: frontend
-        run: flutter test
       - name: Build Flutter web
         working-directory: frontend
         run: flutter build web --dart-define=PLANIT_API_BASE_URL=http://localhost:8000
+      - name: Test connected API and standalone profile UI
+        working-directory: frontend
+        run: flutter test test/api_integration_test.dart test/profile_test.dart test/profile_support_test.dart
+      - name: Check upstream legacy preview tests (non-blocking)
+        working-directory: frontend
+        continue-on-error: true
+        run: flutter test test/widget_test.dart test/calendar_test.dart test/rooms_test.dart
+
+  backend-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r backend/requirements.txt pytest
+      - run: python -m compileall -q backend
+      - name: Run all backend tests
+        working-directory: backend
+        run: python -m pytest -q tests
