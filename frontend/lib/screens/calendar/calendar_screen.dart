@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../models/calendar_event.dart';
 import '../../services/calendar_controller.dart';
+import '../../services/planit_api.dart';
 import 'event_editor_sheet.dart';
 
 const _ink = Color(0xFF2D2D2F);
@@ -30,6 +32,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _month;
   bool _mondayFirst = false;
   bool _colorWeekends = false;
+  Timer? _yearRefreshTimer;
 
   DateTime get _today => calendarDay(widget.today ?? DateTime.now());
 
@@ -40,10 +43,32 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _month = DateTime(_selected.year, _selected.month);
   }
 
-  void _select(DateTime day) => setState(() {
-    _selected = calendarDay(day);
-    _month = DateTime(day.year, day.month);
-  });
+  void _select(DateTime day) {
+    final yearChanged = _month.year != day.year;
+    setState(() {
+      _selected = calendarDay(day);
+      _month = DateTime(day.year, day.month);
+    });
+    if (yearChanged && PlanitApi.instance.hasSession) {
+      _yearRefreshTimer?.cancel();
+      _yearRefreshTimer = Timer(const Duration(milliseconds: 350), () async {
+        try {
+          await widget.controller.loadRemote(year: day.year);
+        } catch (error) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('해당 연도 일정을 불러오지 못했습니다: $error')),
+          );
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _yearRefreshTimer?.cancel();
+    super.dispose();
+  }
 
   void _changeMonth(int offset) {
     final month = DateTime(_month.year, _month.month + offset);
