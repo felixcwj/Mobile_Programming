@@ -14,8 +14,12 @@ class AiResultScreen extends StatelessWidget {
   final String roomId;
   final RoomsController controller;
   final ValueChanged<PlanRoom>? onConfirmed;
+  static final Set<String> _confirmingRooms = <String>{};
+  static final Set<String> _refreshingRooms = <String>{};
 
   Future<void> _confirm(BuildContext context) async {
+    if (!_confirmingRooms.add(roomId)) return;
+    try {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -49,6 +53,27 @@ class AiResultScreen extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('약속 확정에 실패했습니다: $error')));
       }
+    }
+    } finally {
+      _confirmingRooms.remove(roomId);
+    }
+  }
+
+  Future<void> _refresh(BuildContext context) async {
+    if (!_refreshingRooms.add(roomId)) return;
+    try {
+      await controller.generateRecommendation(roomId);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('새로운 추천 코스를 불러왔습니다.')),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('다시 추천하지 못했습니다: $error')),
+      );
+    } finally {
+      _refreshingRooms.remove(roomId);
     }
   }
 
@@ -190,20 +215,7 @@ class AiResultScreen extends StatelessWidget {
                     RoomAction(
                       label: '다시 추천받기',
                       icon: Icons.refresh,
-                      onPressed: () async {
-                        try {
-                          await controller.generateRecommendation(roomId);
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('새로운 추천 코스를 불러왔습니다.')),
-                          );
-                        } catch (error) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('다시 추천하지 못했습니다: $error')),
-                          );
-                        }
-                      },
+                      onPressed: () => _refresh(context),
                     ),
                     const SizedBox(height: 12),
                   ],
