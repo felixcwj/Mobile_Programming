@@ -57,10 +57,12 @@ class PlanitApi {
   }) async {
     final headers = <String, String>{'Accept': 'application/json'};
     if (body != null) headers['Content-Type'] = 'application/json';
+    String? sentAccessToken;
     if (authenticated) {
       final token = _accessToken;
       if (token == null) throw const PlanitApiException('로그인이 필요합니다.');
       headers['Authorization'] = 'Bearer $token';
+      sentAccessToken = token;
     }
 
     final uri = _url(path, query);
@@ -104,7 +106,9 @@ class PlanitApi {
         authenticated &&
         retryAuthentication &&
         _refreshToken != null) {
-      await _refreshSession();
+      if (_accessToken == sentAccessToken) {
+        await _refreshSession();
+      }
       return request(
         method, path, query: query, body: body,
         authenticated: authenticated, retryAuthentication: false,
