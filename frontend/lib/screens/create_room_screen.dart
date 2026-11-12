@@ -1,17 +1,13 @@
 
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 
 class CreatedRoom {
   final String name;
   final int capacity;
-  final String code;
 
   const CreatedRoom({
     required this.name,
     required this.capacity,
-    required this.code,
   });
 }
 
@@ -36,35 +32,12 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
     super.dispose();
   }
 
-  String _generateCode() {
-    const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-    const numbers = '0123456789';
-    const symbols = '#@!';
-    const all = '$letters$numbers$symbols';
-
-    final random = Random.secure();
-
-    final chars = <String>[
-      letters[random.nextInt(letters.length)],
-      numbers[random.nextInt(numbers.length)],
-      symbols[random.nextInt(symbols.length)],
-      ...List.generate(
-        4,
-            (_) => all[random.nextInt(all.length)],
-      ),
-    ];
-
-    chars.shuffle(random);
-    return chars.join();
-  }
-
   void _createRoom() {
     final name = _nameController.text.trim();
 
     final room = CreatedRoom(
       name: name.isEmpty ? '새 약속방' : name,
       capacity: maxCapacity,
-      code: _generateCode(),
     );
 
     Navigator.pop(context, room);
