@@ -26,7 +26,7 @@ class AiResultScreen extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('더 살펴볼게요'),
+            child: const Text('취소'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
@@ -40,8 +40,10 @@ class AiResultScreen extends StatelessWidget {
       await controller.confirmRemote(roomId);
       onConfirmed?.call(controller.room(roomId));
       if (!context.mounted) return;
+      Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('서버에 약속을 확정했습니다.')));
+        const SnackBar(content: Text('약속이 확정됐습니다. 약속방에서 확인하세요.')),
+      );
     } catch (error) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -178,6 +180,14 @@ class AiResultScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 24),
+                  if (!confirmed) ...[
+                    RoomAction(
+                      label: '조건 수정·다시 추천',
+                      icon: Icons.edit_outlined,
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   RoomAction(
                     label: confirmed ? '확정된 약속이에요' : '이 코스로 약속 확정',
                     icon: Icons.check,
