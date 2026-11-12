@@ -1,7 +1,4 @@
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../models/user_profile.dart';
 import '../../services/profile_repository.dart';
 import 'account_edit_screen.dart';
@@ -23,53 +20,18 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nickname;
-  Uint8List? _photo;
   bool _saving = false;
-  bool _picking = false;
 
   @override
   void initState() {
     super.initState();
     _nickname = TextEditingController(text: widget.profile.nickname);
-    _photo = widget.profile.photoBytes;
   }
 
   @override
   void dispose() {
     _nickname.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickPhoto() async {
-    setState(() => _picking = true);
-    try {
-      final file = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
-      );
-      if (file == null) return;
-      if (await file.length() > 5 * 1024 * 1024) {
-        throw StateError('Image exceeds 5 MB');
-      }
-      final bytes = await file.readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 128);
-      try {
-        final frame = await codec.getNextFrame();
-        frame.image.dispose();
-      } finally {
-        codec.dispose();
-      }
-      if (mounted) setState(() => _photo = bytes);
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('사진을 열지 못했어요. 5MB 이하의 이미지로 다시 선택해 주세요.')),
-      );
-    } finally {
-      if (mounted) setState(() => _picking = false);
-    }
   }
 
   Future<void> _save() async {
@@ -86,8 +48,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final latest = await widget.repository.load();
       final updated = latest.copyWith(
         nickname: _nickname.text.trim(),
-        photoBytes: _photo,
-        removePhoto: _photo == null,
       );
       await widget.repository.save(updated);
       if (mounted) Navigator.of(context).pop(updated);
@@ -108,7 +68,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !_saving && !_picking,
+    canPop: !_saving,
     child: Scaffold(
       appBar: AppBar(title: const Text('나의 정보 수정')),
       body: SafeArea(
@@ -116,41 +76,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 600),
             child: AbsorbPointer(
-              absorbing: _saving || _picking,
+              absorbing: _saving,
               child: Form(
                 key: _formKey,
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                   children: [
-                    ProfileSection(
-                      title: '프로필 사진',
-                      child: Column(
-                        children: [
-                          ProfileAvatar(bytes: _photo, radius: 48),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 12,
-                            children: [
-                              TextButton.icon(
-                                onPressed: _pickPhoto,
-                                icon: const Icon(Icons.photo_library_outlined),
-                                label: Text(
-                                  _picking ? '사진 여는 중…' : '프로필 사진 수정',
-                                ),
-                              ),
-                              if (_photo != null)
-                                TextButton(
-                                  onPressed: () =>
-                                      setState(() => _photo = null),
-                                  child: const Text('사진 삭제'),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 18),
                     ProfileSection(
                       title: '나의 정보',
                       child: Column(
