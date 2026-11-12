@@ -80,7 +80,9 @@ class PlanitApi {
         default:
           throw const PlanitApiException('지원하지 않는 HTTP 메서드입니다.');
       }
-      response = await operation.timeout(requestTimeout);
+      response = await operation.timeout(
+        path.endsWith('/recommend') ? const Duration(seconds: 150) : requestTimeout,
+      );
     } on PlanitApiException {
       rethrow;
     } on TimeoutException {
