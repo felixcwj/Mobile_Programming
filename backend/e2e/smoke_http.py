@@ -61,7 +61,15 @@ assert request("GET", "/mypage/preferences", token=tc)["preferences"] == {
     "gender": "female", "birthday": "2001-03-15",
 }
 request("POST", "/auth/login", body={"id": a, "password": "wrong"}, status=401)
-checks.append("Three real Firebase Auth signups, optional signup demographics persist, login tokens")
+login_for_refresh = request("POST", "/auth/login", body={"id": a, "password": password_a})
+renewed = request("POST", "/auth/refresh", body={
+    "refresh_token": login_for_refresh["refresh_token"],
+})
+assert renewed.get("access_token") and renewed.get("refresh_token")
+assert renewed["uid"] == a
+assert request("GET", "/users/me", token=renewed["access_token"])["id"] == a
+request("POST", "/auth/refresh", body={"refresh_token": "not-valid"}, status=401)
+checks.append("Three real Firebase Auth signups, optional signup demographics, token renewal")
 
 assert request("GET", "/auth/check-id", params={"id": a})["available"] is False
 assert request("GET", "/auth/check-id", params={"id": "freeuser42"})["available"] is True
