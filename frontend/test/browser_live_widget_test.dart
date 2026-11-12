@@ -57,9 +57,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, 'Browser E2E outing');
     await tester.tap(find.byTooltip('방 생성 완료'));
-    await settleNetwork(tester);
-
-    print('E2E_STAGE: create_room_wait_completed');
+    for (var attempt = 0; attempt < 20; attempt++) {
+      await settleNetwork(tester);
+      if (find.text('방이 만들어졌어요! 🎉').evaluate().isNotEmpty) break;
+    }
+    final roomText = tester.widgetList<Text>(find.byType(Text))
+        .map((item) => item.data)
+        .whereType<String>()
+        .take(35)
+        .toList();
+    print('E2E_STAGE: create_room_wait_completed; visible=$roomText');
     expect(find.text('방이 만들어졌어요! 🎉'), findsOneWidget);
     final result = await tester.runAsync(
         () => PlanitApi.instance.request('GET', '/rooms'));
