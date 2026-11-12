@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart';
+import '../services/planit_api.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,6 +15,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final passwordController = TextEditingController();
 
   bool isPasswordVisible = false;
+  bool _loggingIn = false;
 
   @override
   void dispose() {
@@ -112,25 +114,34 @@ class _LoginScreenState extends State<LoginScreen> {
                   SizedBox(
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: _loggingIn ? null : () async {
                         final id = idController.text.trim();
                         final password = passwordController.text;
-
                         if (id.isEmpty || password.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('아이디와 비밀번호를 입력해 주세요.'),
-                            ),
+                            const SnackBar(content: Text('아이디와 비밀번호를 입력해 주세요.')),
                           );
                           return;
                         }
-
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => HomeScreen(loginId: id),
-                          ),
-                        );
+                        setState(() => _loggingIn = true);
+                        try {
+                          await PlanitApi.instance.login(id, password);
+                          if (!mounted) return;
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => HomeScreen(loginId: id),
+                            ),
+                          );
+                        } catch (error) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('$error')),
+                            );
+                          }
+                        } finally {
+                          if (mounted) setState(() => _loggingIn = false);
+                        }
                       },
 
                       style: ElevatedButton.styleFrom(
