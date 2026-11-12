@@ -63,7 +63,7 @@ void main() {
       }
       expect(request.headers['authorization'], 'Bearer verified-test-token');
       if (request.url.path == '/rooms') {
-        return http.Response(jsonEncode({
+        return http.Response.bytes(utf8.encode(jsonEncode({
           'rooms': [
             {
               'room_id': 'server-room-1',
@@ -73,7 +73,7 @@ void main() {
               'max_members': 4
             }
           ]
-        }), 200);
+        })), 200, headers: {'content-type': 'application/json; charset=utf-8'});
       }
       if (request.url.path == '/calendar/room-appointments') {
         return http.Response(jsonEncode({'events': []}), 200);
