@@ -141,12 +141,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text('프로필을 불러오지 못했어요.'),
+                        const SizedBox(height: 12),
                         TextButton(
                           onPressed: () => setState(() {
                             _profile = widget.repository.load();
                           }),
                           child: const Text('다시 시도'),
                         ),
+                        if (Navigator.of(context).canPop())
+                          TextButton.icon(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.arrow_back),
+                            label: const Text('이전 화면으로'),
+                          ),
+                        if (widget.onLogout != null)
+                          TextButton.icon(
+                            onPressed: _loggingOut ? null : _logout,
+                            icon: const Icon(Icons.logout),
+                            label: Text(_loggingOut ? '로그아웃 중…' : '로그아웃하고 다시 로그인'),
+                          ),
                       ],
                     ),
                   );
