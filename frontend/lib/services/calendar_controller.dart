@@ -16,11 +16,15 @@ class CalendarController extends ChangeNotifier {
   final Map<String, int> _versions = {};
   final Map<String, CalendarEvent> _remoteRoomEvents = {};
   bool _serverRoomEventsLoaded = false;
+  bool _disposed = false;
+  int _loadGeneration = 0;
 
   String newEventId() => 'personal-${_nextId++}';
 
   /// Loads private and recurring events from the current Firebase-backed user.
   Future<void> loadRemote() async {
+    if (_disposed) return;
+    final generation = ++_loadGeneration;
     final year = DateTime.now().year;
     final start = DateTime(year, 1, 1).toUtc().toIso8601String();
     final end = DateTime(year + 1, 1, 1).toUtc().toIso8601String();
@@ -37,8 +41,8 @@ class CalendarController extends ChangeNotifier {
         }
       }
     }
-    _personalEvents.clear();
-    _versions.clear();
+    final personalEvents = <String, CalendarEvent>{};
+    final versions = <String, int>{};
     for (final entry in records.entries) {
       final raw = entry.value;
       if (raw['deleted'] == true || raw['source'] == 'meeting') continue;
@@ -55,8 +59,8 @@ class CalendarController extends ChangeNotifier {
           category = item;
         }
       }
-      _versions[entry.key] = (raw['version'] as num?)?.toInt() ?? 1;
-      _personalEvents[entry.key] = CalendarEvent(
+      versions[entry.key] = (raw['version'] as num?)?.toInt() ?? 1;
+      personalEvents[entry.key] = CalendarEvent(
         id: entry.key,
         title: raw['title']?.toString() ?? '',
         start: starts.toLocal(),
@@ -70,14 +74,14 @@ class CalendarController extends ChangeNotifier {
       );
     }
     final roomsResponse = await api.request('GET', '/calendar/room-appointments');
-    _remoteRoomEvents.clear();
+    final remoteRoomEvents = <String, CalendarEvent>{};
     for (final raw in roomsResponse['events'] as List<dynamic>? ?? []) {
       if (raw is! Map<String, dynamic>) continue;
       final id = raw['id']?.toString();
       final start = DateTime.tryParse(raw['starts_at']?.toString() ?? '')?.toLocal();
       if (id == null || start == null) continue;
       final end = DateTime.tryParse(raw['ends_at']?.toString() ?? '')?.toLocal();
-      _remoteRoomEvents[id] = CalendarEvent(
+      remoteRoomEvents[id] = CalendarEvent(
         id: id,
         title: raw['title']?.toString() ?? '약속',
         start: start,
@@ -90,6 +94,16 @@ class CalendarController extends ChangeNotifier {
         notes: raw['status'] == 'confirmed' ? '확정된 약속' : '예정된 약속',
       );
     }
+    if (_disposed || generation != _loadGeneration) return;
+    _personalEvents
+      ..clear()
+      ..addAll(personalEvents);
+    _versions
+      ..clear()
+      ..addAll(versions);
+    _remoteRoomEvents
+      ..clear()
+      ..addAll(remoteRoomEvents);
     _serverRoomEventsLoaded = true;
     notifyListeners();
   }
@@ -179,7 +193,14 @@ class CalendarController extends ChangeNotifier {
   void _roomsChanged() => notifyListeners();
 
   @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
+  @override
   void dispose() {
+    _disposed = true;
+    _loadGeneration++;
     roomsController.removeListener(_roomsChanged);
     super.dispose();
   }
