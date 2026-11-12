@@ -12,23 +12,28 @@ class PlanitApi {
       String.fromEnvironment('PLANIT_API_BASE_URL', defaultValue: '');
   String? _accessToken;
   http.Client _client = http.Client();
+  String? _testBaseUrl;
 
   /// Inject a mock HTTP transport in tests; not used by production screens.
-  void replaceHttpClientForTesting(http.Client client) => _client = client;
+  void replaceHttpClientForTesting(http.Client client, {String baseUrl = 'http://localhost:8000'}) {
+    _client = client;
+    _testBaseUrl = baseUrl;
+  }
 
   bool get hasSession => _accessToken != null;
   void clearSession() => _accessToken = null;
 
   Uri _url(String path, [Map<String, String>? query]) {
-    if (configuredBaseUrl.isEmpty) {
+    final baseUrl = _testBaseUrl ?? configuredBaseUrl;
+    if (baseUrl.isEmpty) {
       throw const PlanitApiException(
           '백엔드 주소가 설정되지 않았습니다. PLANIT_API_BASE_URL을 지정하세요.');
     }
-    final root = Uri.tryParse(configuredBaseUrl);
+    final root = Uri.tryParse(baseUrl);
     if (root == null || !root.hasScheme || root.host.isEmpty) {
       throw const PlanitApiException('백엔드 주소 형식이 올바르지 않습니다.');
     }
-    return Uri.parse('${configuredBaseUrl.replaceFirst(RegExp(r"/+$"), "")}$path')
+    return Uri.parse('${baseUrl.replaceFirst(RegExp(r"/+$"), "")}$path')
         .replace(queryParameters: query);
   }
 
