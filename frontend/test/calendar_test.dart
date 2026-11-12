@@ -187,14 +187,16 @@ void main() {
           'id': 'remote-personal-1',
           'version': ++version,
         };
-        return http.Response(jsonEncode({'event': stored}), 201);
+        return http.Response.bytes(utf8.encode(jsonEncode({'event': stored})), 201,
+          headers: {'content-type': 'application/json; charset=utf-8'});
       }
       if (request.url.path == '/calendar/events/remote-personal-1' &&
           request.method == 'PUT') {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         expect(body['version'], version);
         stored = {...body, 'id': 'remote-personal-1', 'version': ++version};
-        return http.Response(jsonEncode({'event': stored}), 200);
+        return http.Response.bytes(utf8.encode(jsonEncode({'event': stored})), 200,
+          headers: {'content-type': 'application/json; charset=utf-8'});
       }
       if (request.url.path == '/calendar/events/remote-personal-1' &&
           request.method == 'DELETE') {
@@ -203,7 +205,8 @@ void main() {
         return http.Response(jsonEncode({'deleted': true}), 200);
       }
       if (request.url.path == '/calendar/events') {
-        return http.Response(jsonEncode({'events': stored == null ? [] : [stored]}), 200);
+        return http.Response.bytes(utf8.encode(jsonEncode({'events': stored == null ? [] : [stored]})), 200,
+          headers: {'content-type': 'application/json; charset=utf-8'});
       }
       if (request.url.path == '/calendar/recurring-events' ||
           request.url.path == '/calendar/room-appointments') {
