@@ -187,6 +187,7 @@ class _RoomPreferencesScreenState extends State<RoomPreferencesScreen> {
             padding: const EdgeInsets.all(20),
             children: [
               TextFormField(
+                key: const ValueKey('roomBudget'),
                 controller: _budget,
                 decoration: const InputDecoration(labelText: '1인 예산 (원)'),
                 keyboardType: TextInputType.number,
@@ -209,6 +210,7 @@ class _RoomPreferencesScreenState extends State<RoomPreferencesScreen> {
               ),
               const SizedBox(height: 12),
               TextFormField(
+                key: const ValueKey('roomMeetingArea'),
                 controller: _region,
                 decoration: InputDecoration(
                   labelText: _meetingMode == 'fixed' ? '만날 장소' : '희망 활동 지역',
@@ -224,6 +226,7 @@ class _RoomPreferencesScreenState extends State<RoomPreferencesScreen> {
               ),
               if (_meetingMode == 'middle')
                 TextFormField(
+                  key: const ValueKey('roomDeparture'),
                   controller: _departure,
                   decoration: const InputDecoration(
                     labelText: '출발 위치 (선택)',
@@ -260,6 +263,7 @@ class _RoomPreferencesScreenState extends State<RoomPreferencesScreen> {
                 },
               ),
               TextFormField(
+                key: const ValueKey('roomActivities'),
                 controller: _activities,
                 decoration: const InputDecoration(labelText: '희망 활동 (쉼표로 구분)'),
                 maxLength: 150,
