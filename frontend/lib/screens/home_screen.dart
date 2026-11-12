@@ -84,7 +84,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openCalendar() {
+  Future<void> _openCalendar() async {
+    try {
+      await _calendarController.loadRemote();
+    } catch (error) {
+      if (mounted) _showMessage('캘린더를 새로고침하지 못했습니다: $error');
+    }
+    if (!mounted) return;
     Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => CalendarScreen(
