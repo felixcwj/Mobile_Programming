@@ -26,5 +26,15 @@ jobs:
           java-version: '21'
       - name: Install test dependencies
         run: python -m pip install -r backend/requirements.txt
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.8'
+          cache: true
+      - name: Resolve Dart integration client dependencies
+        working-directory: frontend
+        run: flutter pub get
       - name: Run Firebase Auth + Firestore official emulators with real FastAPI
+        env:
+          PLANIT_E2E_RUN_DART: '1'
         run: npx -y firebase-tools@14 emulators:exec --config backend/e2e/firebase.json --project demo-planit-integration --only auth,firestore "bash backend/e2e/run_emulator_http.sh"
