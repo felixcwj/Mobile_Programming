@@ -201,10 +201,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                       ),
                     ),
                   ),
-                  const SliverPadding(
-                    padding: EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    sliver: SliverToBoxAdapter(child: RoomDemoNotice()),
-                  ),
+
                 ],
               );
             },
