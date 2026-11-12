@@ -31,7 +31,7 @@ jobs:
         run: flutter test test/api_integration_test.dart test/profile_test.dart test/profile_support_test.dart test/token_refresh_test.dart
       - name: Test authenticated app, calendar and room UI (required)
         working-directory: frontend
-        run: flutter test test/widget_test.dart test/calendar_test.dart test/rooms_test.dart test/room_preferences_persistence_test.dart test/rapid_interaction_stress_test.dart test/async_disposal_stress_test.dart
+        run: flutter test test/widget_test.dart test/calendar_test.dart test/rooms_test.dart test/room_preferences_persistence_test.dart test/rapid_interaction_stress_test.dart test/async_disposal_stress_test.dart test/calendar_year_test.dart
 
   backend-check:
     runs-on: ubuntu-latest
