@@ -88,6 +88,24 @@ class _EditPreferencesScreenState extends State<EditPreferencesScreen> {
     return date;
   }
 
+  Future<void> _pickBirthday() async {
+    final now = DateTime.now();
+    final current = _parseBirth(_birthDate.text.trim());
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? DateTime(now.year - 20, 1, 1),
+      firstDate: DateTime(1900),
+      lastDate: now,
+      helpText: '생년월일',
+      initialDatePickerMode: DatePickerMode.year,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _birthDate.text =
+          '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+    });
+  }
+
   Future<void> _save() async {
     final birthText = _birthDate.text.trim();
     if (birthText.isNotEmpty && _parseBirth(birthText) == null) {
@@ -199,10 +217,15 @@ class _EditPreferencesScreenState extends State<EditPreferencesScreen> {
                         maxLength: 10,
                         autovalidateMode: AutovalidateMode.onUserInteraction,
                         keyboardType: TextInputType.datetime,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: '생년월일',
                           hintText: '2000-01-31',
-                          border: OutlineInputBorder(),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            tooltip: '달력에서 생년월일 선택',
+                            icon: const Icon(Icons.calendar_month_outlined),
+                            onPressed: _pickBirthday,
+                          ),
                         ),
                         validator: (value) =>
                             value == null ||
