@@ -40,6 +40,14 @@ class RoomDetailScreen extends StatelessWidget {
       cancelText: '취소',
     );
     if (time == null || !context.mounted) return;
+    if (room.status == RoomStatus.confirmed &&
+        room.date != null &&
+        (time.hour != room.date!.hour || time.minute != room.date!.minute)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('확정된 약속은 날짜만 변경할 수 있습니다. 시각 변경은 지원되지 않습니다.')),
+      );
+      return;
+    }
     try {
       await controller.saveRemoteSchedule(
         room.id,
