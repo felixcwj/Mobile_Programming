@@ -78,14 +78,10 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       await tester.enterText(find.byKey(const ValueKey('nickname')), '새 닉네임');
-      await tester.enterText(
-        find.byKey(const ValueKey('homeAddress')),
-        '테스트 주소',
-      );
-      await tapVisible(tester, find.text('변경사항 저장'));
+      await tapVisible(tester, find.text('저장하기'));
       final saved = await repository.load();
       expect(saved.nickname, '새 닉네임');
-      expect(saved.homeAddress, '테스트 주소');
+      expect(saved.homeAddress, isEmpty);
       expect(saved.preferences.mbti, 'INFP');
       expect(saved.loginId, 'planner');
       await tapVisible(tester, find.text('나의 정보 수정'));
@@ -122,7 +118,7 @@ void main() {
         find.byKey(const ValueKey('birthDate')),
         '2001-02-29',
       );
-      await tapVisible(tester, find.text('변경사항 저장'));
+      await tapVisible(tester, find.text('저장하기'));
       expect(find.byType(EditPreferencesScreen), findsOneWidget);
       expect((await repository.load()).preferences.birthDate, isNull);
       await tester.pump(const Duration(seconds: 5));
@@ -148,7 +144,7 @@ void main() {
         '서울 마포구',
       );
       await tapVisible(tester, find.widgetWithText(ChoiceChip, '없어요'));
-      await tapVisible(tester, find.text('변경사항 저장'));
+      await tapVisible(tester, find.text('저장하기'));
       final saved = await repository.load();
       expect(saved.preferences.gender, '여성');
       expect(saved.preferences.birthDate, DateTime(2000, 2, 29));
@@ -201,7 +197,7 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     await tester.enterText(find.byKey(const ValueKey('nickname')), '다시 저장할 이름');
-    await tapVisible(tester, find.text('변경사항 저장'));
+    await tapVisible(tester, find.text('저장하기'));
     expect(find.text('저장하지 못했어요. 잠시 후 다시 시도해 주세요.'), findsOneWidget);
     expect(find.byType(EditProfileScreen), findsOneWidget);
   });
