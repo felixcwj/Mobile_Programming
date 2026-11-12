@@ -1,0 +1,30 @@
+name: PlanIt Firebase Emulator Real HTTP E2E
+on:
+  push:
+    branches:
+      - experiment/wonjoon-planit-integration
+    paths:
+      - 'backend/**'
+      - '.github/workflows/planit-firebase-emulator-e2e.yml'
+  workflow_dispatch:
+
+jobs:
+  firebase-real-sdk-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install test dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Run Firebase Auth + Firestore official emulators with real FastAPI
+        run: npx -y firebase-tools@14 emulators:exec --config backend/e2e/firebase.json --project demo-planit-integration --only auth,firestore "bash backend/e2e/run_emulator_http.sh"
