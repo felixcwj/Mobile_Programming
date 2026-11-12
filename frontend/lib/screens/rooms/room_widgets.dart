@@ -55,19 +55,6 @@ class RoomStatusBadge extends StatelessWidget {
   }
 }
 
-class RoomDemoNotice extends StatelessWidget {
-  const RoomDemoNotice({super.key});
-
-  @override
-  Widget build(BuildContext context) => const Padding(
-    padding: EdgeInsets.symmetric(vertical: 16),
-    child: Text(
-      '미리보기 · 참여자와 코스는 예시이며, 변경사항은 앱을 종료하면 초기화돼요.',
-      style: TextStyle(color: roomMuted, fontSize: 12, height: 1.5),
-    ),
-  );
-}
-
 class RoomAction extends StatelessWidget {
   const RoomAction({
     super.key,
