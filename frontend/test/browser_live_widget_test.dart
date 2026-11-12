@@ -14,6 +14,13 @@ Future<void> settleNetwork(WidgetTester tester) async {
 
 void main() {
   testWidgets('Real browser UI logs in and creates a persisted room', (tester) async {
+    final previousErrorHandler = FlutterError.onError;
+    FlutterError.onError = (details) {
+      print('E2E_FLUTTER_ERROR: ${details.exceptionAsString()}');
+      print('E2E_FLUTTER_STACK: ${details.stack}');
+      previousErrorHandler?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = previousErrorHandler);
     final unique = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
     final id = ('ui$unique').substring(0, 11);
     const password = 'UITest_AA12345';
