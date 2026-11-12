@@ -11,6 +11,10 @@ class PlanitApi {
   static const configuredBaseUrl =
       String.fromEnvironment('PLANIT_API_BASE_URL', defaultValue: '');
   String? _accessToken;
+  http.Client _client = http.Client();
+
+  /// Inject a mock HTTP transport in tests; not used by production screens.
+  void replaceHttpClientForTesting(http.Client client) => _client = client;
 
   bool get hasSession => _accessToken != null;
   void clearSession() => _accessToken = null;
@@ -48,18 +52,18 @@ class PlanitApi {
     try {
       switch (method) {
         case 'GET':
-          response = await http.get(uri, headers: headers);
+          response = await _client.get(uri, headers: headers);
         case 'POST':
-          response = await http.post(uri, headers: headers,
+          response = await _client.post(uri, headers: headers,
               body: body == null ? null : jsonEncode(body));
         case 'PUT':
-          response = await http.put(uri, headers: headers,
+          response = await _client.put(uri, headers: headers,
               body: body == null ? null : jsonEncode(body));
         case 'PATCH':
-          response = await http.patch(uri, headers: headers,
+          response = await _client.patch(uri, headers: headers,
               body: body == null ? null : jsonEncode(body));
         case 'DELETE':
-          response = await http.delete(uri, headers: headers);
+          response = await _client.delete(uri, headers: headers);
         default:
           throw const PlanitApiException('지원하지 않는 HTTP 메서드입니다.');
       }
