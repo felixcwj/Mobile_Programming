@@ -3,7 +3,7 @@ import os
 import hashlib
 import unicodedata
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Annotated
 
 import firebase_admin
