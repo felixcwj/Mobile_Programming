@@ -8,8 +8,6 @@ import 'package:meetsync/models/calendar_event.dart';
 import 'package:meetsync/models/plan_room.dart';
 import 'package:meetsync/screens/calendar/calendar_screen.dart';
 import 'package:meetsync/screens/calendar/event_editor_sheet.dart';
-import 'package:meetsync/screens/home_screen.dart';
-import 'package:meetsync/screens/rooms/room_detail_screen.dart';
 import 'package:meetsync/services/calendar_controller.dart';
 import 'package:meetsync/services/rooms_controller.dart';
 import 'package:meetsync/services/planit_api.dart';
