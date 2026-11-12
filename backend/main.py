@@ -219,8 +219,8 @@ def signup(body: SignupRequest):
         "name": body.name,
         "phone": body.phone,
         "preferences": {
-            "gender": body.gender,
-            "birthday": body.birthday.isoformat() if body.birthday else None,
+            **({"gender": body.gender} if body.gender is not None else {}),
+            **({"birthday": body.birthday.isoformat()} if body.birthday is not None else {}),
         },
         "created_at": datetime.now(timezone.utc),
     }
