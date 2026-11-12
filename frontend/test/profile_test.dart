@@ -206,6 +206,36 @@ void main() {
     expect(find.byType(EditProfileScreen), findsOneWidget);
   });
 
+  testWidgets('Failed profile load still allows logout and back navigation', (tester) async {
+    var logoutCalls = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(builder: (context) => Scaffold(
+        body: TextButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => ProfileScreen(
+              repository: FailingRepository(),
+              onLogout: () async { logoutCalls++; },
+            )),
+          ),
+          child: const Text('프로필 열기'),
+        ),
+      )),
+    ));
+    await tester.tap(find.text('프로필 열기'));
+    await tester.pumpAndSettle();
+    expect(find.text('프로필을 불러오지 못했어요.'), findsOneWidget);
+    expect(find.text('이전 화면으로'), findsOneWidget);
+    expect(find.text('로그아웃하고 다시 로그인'), findsOneWidget);
+    await tester.tap(find.text('로그아웃하고 다시 로그인'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '로그아웃'));
+    await tester.pumpAndSettle();
+    expect(logoutCalls, 1);
+    await tester.tap(find.text('이전 화면으로'));
+    await tester.pumpAndSettle();
+    expect(find.text('프로필 열기'), findsOneWidget);
+  });
+
   testWidgets('Logout delegates only after confirming', (tester) async {
     var calls = 0;
     await tester.pumpWidget(
