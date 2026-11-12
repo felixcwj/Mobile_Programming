@@ -102,6 +102,18 @@ void main() {
         .any((event) => event is Map && event['room_id'] == roomId), true,
         reason: 'UI-picked room date must persist to official Firestore emulator');
     print('E2E_STAGE: browser_schedule_saved');
+    final pendingFrameworkError = tester.takeException();
+    if (pendingFrameworkError != null) {
+      print('E2E_STAGE: captured_framework_error=$pendingFrameworkError');
+      fail('Flutter UI reported an exception: $pendingFrameworkError');
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    final teardownError = tester.takeException();
+    if (teardownError != null) {
+      print('E2E_STAGE: widget_teardown_error=$teardownError');
+      fail('Flutter UI teardown failed: $teardownError');
+    }
     PlanitApi.instance.clearSession();
   });
 }
