@@ -275,14 +275,22 @@ class RoomsController extends ChangeNotifier {
     if (room.status == RoomStatus.confirmed && when == null) {
       throw const PlanitApiException('확정된 약속은 날짜를 해제할 수 없습니다.');
     }
-    final response = room.status == RoomStatus.confirmed
+    final isConfirmed = room.status == RoomStatus.confirmed;
+    final latest = await api.request('GET', isConfirmed
+        ? '/rooms/$id/appointment'
+        : '/rooms/$id/schedule');
+    final current = latest[isConfirmed ? 'appointment' : 'schedule'];
+    final version = current is Map<String, dynamic>
+        ? (current['version'] as num?)?.toInt() ?? 0
+        : 0;
+    final response = isConfirmed
         ? await api.request('PATCH', '/rooms/$id/appointment/date', body: {
             'date': '${when?.year.toString().padLeft(4, '0')}-${when?.month.toString().padLeft(2, '0')}-${when?.day.toString().padLeft(2, '0')}',
-            'version': _scheduleVersions[id] ?? 1,
+            'version': version,
           })
         : await api.request('PUT', '/rooms/$id/schedule', body: {
             'starts_at': when?.toUtc().toIso8601String(),
-            'version': _scheduleVersions[id] ?? 0,
+            'version': version,
           });
     final snapshot = response['schedule'] ?? response['appointment'];
     if (snapshot is Map<String, dynamic>) {
