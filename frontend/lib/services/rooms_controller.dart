@@ -98,6 +98,7 @@ class RoomsController extends ChangeNotifier {
   final Map<String, String> _recommendationRevisions = {};
   int _localMutationEpoch = 0;
   int _latestLoadRequest = 0;
+  bool _disposed = false;
 
   /// Refreshes actual rooms and confirmed/pending dates from the backend.
   Future<void> loadRemote() async {
@@ -108,7 +109,8 @@ class RoomsController extends ChangeNotifier {
     final api = PlanitApi.instance;
     final response = await api.request('GET', '/rooms');
     final calendar = await api.request('GET', '/calendar/room-appointments');
-    if (requestId != _latestLoadRequest ||
+    if (_disposed ||
+        requestId != _latestLoadRequest ||
         initialMutationEpoch != _localMutationEpoch) {
       return;
     }
@@ -351,4 +353,16 @@ class RoomsController extends ChangeNotifier {
     notifyListeners();
     return true;
   }
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    ++_latestLoadRequest;
+    super.dispose();
+  }
+
 }
