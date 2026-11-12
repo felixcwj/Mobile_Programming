@@ -5,6 +5,7 @@ import '../models/user_profile.dart';
 import '../services/profile_repository.dart';
 import '../services/rooms_controller.dart';
 import '../services/calendar_controller.dart';
+import '../services/planit_api.dart';
 import 'calendar/calendar_screen.dart';
 import 'create_room_screen.dart';
 import 'login_screen.dart';
@@ -35,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _calendarController = CalendarController(roomsController: _roomsController);
+    _loadServerData();
     // Local session only, until the authentication/profile APIs are connected.
     _profileRepository = MemoryProfileRepository(
       initialProfile: UserProfile(
@@ -46,6 +48,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _loadServerData() async {
+    try {
+      await _roomsController.loadRemote();
+      await _calendarController.loadRemote();
+    } catch (error) {
+      if (mounted) _showMessage('데이터를 불러오지 못했습니다: $error');
+    }
+  }
+
   @override
   void dispose() {
     _calendarController.dispose();
@@ -54,6 +65,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _logout() async {
+    PlanitApi.instance.clearSession();
+    if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil<void>(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (_) => false,
@@ -166,18 +179,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted || result == null) return;
 
-    final room = PlanRoom(
-      id: result.code,
-      title: result.name,
-      inviteCode: result.code,
-      region: '지역 미정',
-      capacity: result.capacity,
-      members: const [RoomMember(name: '나', submitted: false)],
-    );
-
-    _roomsController.addRoom(room);
-
-    _showRoomCreatedDialog(room);
+    try {
+      final room = await _roomsController.createRemoteRoom(
+        result.name, result.capacity);
+      if (!mounted) return;
+      _showRoomCreatedDialog(room);
+    } catch (error) {
+      if (mounted) _showMessage('방을 만들지 못했습니다: $error');
+    }
   }
 
   void _showRoomCreatedDialog(PlanRoom room) {
@@ -283,13 +292,12 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // 아직 서버가 없으므로 다른 사용자의 방은 조회할 수 없음.
-    final existingRoom = _rooms.where((room) => room.inviteCode == inputCode);
-
-    if (existingRoom.isNotEmpty) {
-      _showMessage('이미 내 목록에 있는 방이에요.');
-    } else {
-      _showMessage('코드 입력 완료! 실제 방 참여는 서버 연결 후 가능해요.');
+    try {
+      await _roomsController.joinRemoteRoom(inputCode);
+      await _calendarController.loadRemote();
+      if (mounted) _showMessage('방에 참여했습니다.');
+    } catch (error) {
+      if (mounted) _showMessage('방에 참여하지 못했습니다: $error');
     }
   }
 
