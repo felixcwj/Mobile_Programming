@@ -182,9 +182,28 @@ class AiResultScreen extends StatelessWidget {
                   const SizedBox(height: 24),
                   if (!confirmed) ...[
                     RoomAction(
-                      label: '조건 수정·다시 추천',
+                      label: '조건 수정하기',
                       icon: Icons.edit_outlined,
                       onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(height: 12),
+                    RoomAction(
+                      label: '다시 추천받기',
+                      icon: Icons.refresh,
+                      onPressed: () async {
+                        try {
+                          await controller.generateRecommendation(roomId);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('새로운 추천 코스를 불러왔습니다.')),
+                          );
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('다시 추천하지 못했습니다: $error')),
+                          );
+                        }
+                      },
                     ),
                     const SizedBox(height: 12),
                   ],
