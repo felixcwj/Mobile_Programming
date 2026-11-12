@@ -12,7 +12,10 @@ import 'package:meetsync/services/planit_api.dart';
 Future<void> enterCredentials(WidgetTester tester) async {
   await tester.enterText(find.byType(TextField).first, 'planner');
   await tester.enterText(find.byType(TextField).last, 'password123');
-  await tester.tap(find.widgetWithText(ElevatedButton, '로그인'));
+  final button = find.widgetWithText(ElevatedButton, '로그인');
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
   await tester.pumpAndSettle();
 }
 
