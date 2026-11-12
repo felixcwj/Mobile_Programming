@@ -998,47 +998,96 @@ async def _openrouter_course(conditions: dict, candidates: list[dict]) -> dict:
             {'role': 'user', 'content': json.dumps(input_data, ensure_ascii=False)},
         ],
         'temperature': 0.2,
-        'max_tokens': 3000,
+        'max_tokens': 5000,
     }
     headers = {
         'Authorization': f'Bearer {OPENROUTER_API_KEY}',
         'Content-Type': 'application/json',
     }
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=120, write=20, pool=10)) as client:
-            response = await client.post(url, headers=headers, json=payload)
-    except httpx.TimeoutException:
-        raise HTTPException(504, 'OpenRouter 응답 시간이 초과됐습니다.')
-    except httpx.RequestError:
-        raise HTTPException(503, 'OpenRouter 서버에 연결하지 못했습니다.')
-    if response.status_code != 200:
+    # A single retry is allowed only for a successful HTTP response with no
+    # usable completion. Do not spend more free requests on rate-limit errors.
+    for attempt in range(2):
+        request_payload = dict(payload)
+        if attempt == 1:
+            # Some reasoning models consume the entire completion budget before
+            # returning final text. Ask for minimal reasoning on the retry.
+            request_payload['reasoning'] = {'effort': 'none'}
         try:
-            err = response.json().get('error', {})
-            message = err.get('message', '') if isinstance(err, dict) else str(err)
-        except ValueError:
-            message = ''
-        if response.status_code == 429:
-            raise HTTPException(429, 'OpenRouter 무료 모델 요청 한도를 초과했습니다.')
-        if response.status_code == 402:
-            raise HTTPException(402, 'OpenRouter 계정의 무료 이용 한도 또는 크레딧을 확인하세요.')
-        raise HTTPException(502, f'OpenRouter 요청 실패 (HTTP {response.status_code}): {str(message)[:240]}')
-    try:
-        content = response.json()['choices'][0]['message']['content']
-        if isinstance(content, list):
-            raw = ''.join(piece.get('text', '') for piece in content if isinstance(piece, dict))
-        elif isinstance(content, str):
-            raw = content
-        else:
-            raise ValueError('AI 응답에 텍스트가 없습니다.')
-        raw = raw.strip()
-        if raw.startswith('```'):
-            raw = raw.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
-        plan = VerifiedCoursePlan.model_validate_json(raw)
-        return _check_and_enrich(plan, conditions, candidates)
-    except (KeyError, IndexError, ValueError, TypeError) as exc:
-        print('OpenRouter 추천 검증 실패:', str(exc))
-        raise HTTPException(502, f'OpenRouter 추천 검증 실패: {str(exc)}')
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=120, write=20, pool=10)) as client:
+                response = await client.post(url, headers=headers, json=request_payload)
+        except httpx.TimeoutException:
+            raise HTTPException(504, 'OpenRouter 응답 시간이 초과됐습니다.')
+        except httpx.RequestError:
+            raise HTTPException(503, 'OpenRouter 서버에 연결하지 못했습니다.')
 
+        if response.status_code != 200:
+            try:
+                error = response.json().get('error') or {}
+            except ValueError:
+                error = {}
+            if not isinstance(error, dict):
+                error = {}
+            metadata = error.get('metadata') or {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            if response.status_code == 429:
+                source = metadata.get('limit_source', '')
+                provider = str(metadata.get('provider_name') or '')[:80]
+                if source == 'upstream_provider_shared_pool':
+                    detail = f"OpenRouter 모델 제공업체({provider or '외부 제공업체'})의 무료 공용 용량이 부족합니다. 다른 모델/제공업체를 선택해야 합니다."
+                elif source == 'openrouter_free_tier_per_minute':
+                    detail = 'OpenRouter 분당 무료 요청 한도에 도달했습니다.'
+                elif source == 'openrouter_free_tier_per_day':
+                    detail = 'OpenRouter 일일 무료 요청 한도에 도달했습니다.'
+                else:
+                    detail = f"OpenRouter 요청 제한(429, 출처: {source or '미확인'}). 일일 한도 소진으로 단정할 수 없습니다."
+                retry_after = response.headers.get('retry-after')
+                if retry_after and len(retry_after) <= 30:
+                    detail += f' Retry-After: {retry_after}'
+                print('OpenRouter rate limit:', {'limit_source': source, 'provider': provider, 'model': OPENROUTER_MODEL})
+                raise HTTPException(429, detail)
+            if response.status_code == 402:
+                raise HTTPException(402, 'OpenRouter 계정의 무료 이용 한도 또는 크레딧을 확인하세요.')
+            print('OpenRouter HTTP failure:', {'status': response.status_code, 'model': OPENROUTER_MODEL})
+            raise HTTPException(502, f'OpenRouter 요청 실패 (HTTP {response.status_code}). API 제공업체 상태를 확인하세요.')
+
+        try:
+            completion = response.json()
+            choice = completion['choices'][0]
+            message = choice.get('message') or {}
+            content = message.get('content')
+            if isinstance(content, list):
+                raw = ''.join(piece.get('text', '') for piece in content if isinstance(piece, dict))
+            elif isinstance(content, str):
+                raw = content
+            else:
+                raw = ''
+            raw = raw.strip()
+            if raw.startswith('```'):
+                raw = raw.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
+            if not raw:
+                usage = completion.get('usage') or {}
+                token_details = usage.get('completion_tokens_details') or {}
+                diagnostic = {
+                    'model': completion.get('model') or OPENROUTER_MODEL,
+                    'finish_reason': choice.get('finish_reason'),
+                    'completion_tokens': usage.get('completion_tokens'),
+                    'reasoning_tokens': token_details.get('reasoning_tokens'),
+                    'has_reasoning': bool(message.get('reasoning') or message.get('reasoning_details')),
+                    'attempt': attempt + 1,
+                }
+                print('OpenRouter empty completion:', diagnostic)
+                if attempt == 0:
+                    continue
+                raise HTTPException(502, 'OpenRouter가 두 번 연속 최종 텍스트를 반환하지 않았습니다. 백엔드 로그의 모델/종료 사유를 확인하세요.')
+            plan = VerifiedCoursePlan.model_validate_json(raw)
+            return _check_and_enrich(plan, conditions, candidates)
+        except HTTPException:
+            raise
+        except (KeyError, IndexError, ValueError, TypeError) as exc:
+            print('OpenRouter 추천 검증 실패:', type(exc).__name__, str(exc)[:300])
+            raise HTTPException(502, f'OpenRouter 추천 검증 실패: {str(exc)[:240]}')
+    raise HTTPException(502, 'OpenRouter 추천 응답을 처리하지 못했습니다.')
 
 async def _regenerate_room(room_id: str, uid: str) -> dict:
     conditions = _collect_constraints(room_id, uid)
