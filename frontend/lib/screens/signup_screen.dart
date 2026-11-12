@@ -275,7 +275,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
                     _field(
                       label: '이름',
-                      hint: '실명을 입력해 주세요',
+                      hint: '이름을 입력해 주세요 (한글·영문 가능)',
                       controller: _nameController,
                       validator: (value) {
                         if ((value ?? '').trim().isEmpty) {
