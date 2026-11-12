@@ -41,7 +41,17 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> _checkDuplicateId() async {
     final id = _idController.text.trim();
-    if (!RegExp(r'^[a-zA-Z0-9_]{4,12}
+    if (!RegExp(r'^[a-zA-Z0-9_]{4,12}$').hasMatch(id)) {
+      _showMessage('아이디는 영문·숫자·밑줄 4~12자로 입력해 주세요.');
+      return;
+    }
+    try {
+      final available = await PlanitApi.instance.isIdAvailable(id);
+      if (mounted) _showMessage(available ? '사용 가능한 아이디입니다.' : '이미 사용 중인 아이디입니다.');
+    } catch (error) {
+      if (mounted) _showMessage('$error');
+    }
+  }
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -162,7 +172,7 @@ class _SignupScreenState extends State<SignupScreen> {
                             hint: '영문·숫자·밑줄 4~12자',
                             controller: _idController,
                             validator: (value) {
-                              if (!RegExp(r'^[a-zA-Z0-9_]{4,12})
+                              if (!RegExp(r'^[a-zA-Z0-9_]{4,12}$')
                                   .hasMatch(value?.trim() ?? '')) {
                                 return '영문·숫자·밑줄 4~12자로 입력해 주세요.';
                               }
