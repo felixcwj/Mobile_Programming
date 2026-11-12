@@ -184,7 +184,7 @@ class RoomsController extends ChangeNotifier {
       final revision = recommendation['source_revision']?.toString();
       if (revision != null) _recommendationRevisions[id] = revision;
     }
-    final course = fresh ? _courseFromResponse(recommendation!) : <CourseStop>[];
+    final course = fresh ? _courseFromResponse(recommendation) : <CourseStop>[];
     _replaceRoom(PlanRoom(
       id: room.id,
       title: room.title,
