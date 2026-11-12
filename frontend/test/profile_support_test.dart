@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:meetsync/services/planit_api.dart';
 import 'package:meetsync/models/user_profile.dart';
 import 'package:meetsync/screens/profile/profile_screen.dart';
 import 'package:meetsync/screens/profile/support_screen.dart';
@@ -21,6 +24,17 @@ void main() {
   testWidgets(
     'Profile opens empty appointment history and support on a small screen',
     (tester) async {
+      PlanitApi.instance.replaceHttpClientForTesting(MockClient((request) async {
+        if (request.url.path == '/auth/login') {
+          return http.Response('{"access_token":"testing-id-token"}', 200);
+        }
+        if (request.url.path == '/mypage/appointments') {
+          return http.Response('{"appointments":[],"count":0}', 200);
+        }
+        return http.Response('{"detail":"not found"}', 404);
+      }));
+      await PlanitApi.instance.login('test', 'test');
+      addTearDown(PlanitApi.instance.clearSession);
       tester.view.physicalSize = const Size(320, 740);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
