@@ -199,10 +199,10 @@ checks.append("Leaving room hides personal shared calendar and preserves other m
 # --- Extended real SDK checks: MyPage, voting, privacy, recovery ---
 original_profile = request("GET", "/mypage/profile", token=ta)
 updated_profile = request("PUT", "/mypage/profile", token=ta, body={
-    "nickname": f"Verified{prefix}", "name": "Verified QA", "phone": "01012345678",
+    "nickname": f"Vfy{prefix}", "name": "Verified QA", "phone": "01012345678",
 })
-assert updated_profile["nickname"] == f"Verified{prefix}"
-assert request("GET", "/mypage/profile", token=ta)["nickname"] == f"Verified{prefix}"
+assert updated_profile["nickname"] == f"Vfy{prefix}"
+assert request("GET", "/mypage/profile", token=ta)["nickname"] == f"Vfy{prefix}"
 request("GET", "/mypage/profile", status=401)
 prefs_saved = request("PUT", "/mypage/preferences", token=ta, body={
     "gender": "male", "birthday": "2003-12-28",
