@@ -194,39 +194,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 28),
                     Center(
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          ProfileAvatar(bytes: profile.photoBytes, radius: 52),
-                          Positioned(
-                            right: -3,
-                            bottom: -3,
-                            child: Material(
-                              color: Colors.white,
-                              shape: const CircleBorder(
-                                side: BorderSide(
-                                  color: Color(0xFFD9F0FB),
-                                  width: 2,
-                                ),
-                              ),
-                              child: IconButton(
-                                tooltip: '프로필 사진 수정',
-                                onPressed: () => _edit(profile),
-                                constraints: const BoxConstraints.tightFor(
-                                  width: 38,
-                                  height: 38,
-                                ),
-                                padding: EdgeInsets.zero,
-                                icon: const Icon(
-                                  Icons.edit,
-                                  size: 19,
-                                  color: profileBlue,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: ProfileAvatar(bytes: profile.photoBytes, radius: 52),
                     ),
                     const SizedBox(height: 30),
                     _menu(
