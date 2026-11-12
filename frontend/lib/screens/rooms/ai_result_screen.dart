@@ -40,7 +40,7 @@ class AiResultScreen extends StatelessWidget {
       await controller.confirmRemote(roomId);
       onConfirmed?.call(controller.room(roomId));
       if (!context.mounted) return;
-      Navigator.of(context).pop();
+      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('약속이 확정됐습니다. 약속방에서 확인하세요.')),
       );
