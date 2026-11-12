@@ -25,6 +25,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
   static const int maxCapacity = 8;
 
   final _nameController = TextEditingController();
+  bool _submitted = false;
 
   @override
   void dispose() {
@@ -33,6 +34,8 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
   }
 
   void _createRoom() {
+    if (_submitted) return;
+    _submitted = true;
     final name = _nameController.text.trim();
 
     final room = CreatedRoom(
