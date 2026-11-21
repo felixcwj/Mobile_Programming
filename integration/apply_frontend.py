@@ -35,3 +35,12 @@ replace("lib/screens/signup_screen.dart",
         "'영문 및 숫자 4~20자로 입력해 주세요.'",
         "'영문·숫자·밑줄 4~12자로 입력해 주세요.'")
 print("Frontend integration patch applied; run flutter pub get and flutter analyze.")
+
+# HTTP is permitted on the Android emulator only in the debug flavor.
+# Release builds retain the platform default (HTTPS required).
+debug_manifest = frontend / "android/app/src/debug/AndroidManifest.xml"
+debug_manifest.write_text("""<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <application android:usesCleartextTraffic="true" />
+</manifest>
+""")
