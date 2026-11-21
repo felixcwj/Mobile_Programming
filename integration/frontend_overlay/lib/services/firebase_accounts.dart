@@ -162,6 +162,34 @@ class FirebaseProfileRepository implements ProfileRepository {
     }
   }
 
+  Future<void> changeId(String password, String newId) async {
+    try {
+      await _api.request('PUT', '/mypage/id',
+        body: {'password': password, 'new_id': newId.trim()});
+    } on PlanitApiException catch (e) {
+      throw AccountException(e.message);
+    }
+  }
+
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    try {
+      await _api.request('POST', '/mypage/password', body: {
+        'current_password': currentPassword,
+        'new_password': newPassword,
+        'new_password_confirm': newPassword,
+      });
+      final email = FirebaseAuth.instance.currentUser?.email;
+      if (email != null) {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+            email: email, password: newPassword);
+      }
+    } on PlanitApiException catch (e) {
+      throw AccountException(e.message);
+    } on FirebaseAuthException {
+      throw const AccountException('비밀번호가 변경됐습니다. 보안을 위해 다시 로그인해 주세요.');
+    }
+  }
+
   bool _sameBytes(Uint8List? a, Uint8List? b) {
     if (identical(a, b)) return true;
     if (a == null || b == null || a.length != b.length) return false;
