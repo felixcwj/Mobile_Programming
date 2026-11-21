@@ -14,6 +14,7 @@ git clone --recurse-submodules -b experiment/planit-team-integration-20261122 ht
 cd planit-integrated
 python3 integration/apply_frontend.py
 cd frontend
+flutter --version  # CI-pinned SDK: Flutter 3.41.9 (Dart 3.11.5)
 flutter pub get
 flutter analyze
 flutter test
@@ -49,6 +50,9 @@ On **a physical phone**, replace `10.0.2.2` with the backend machine's reachable
 - No publicly reachable server URL has been set, so teammates outside the backend host network must agree on a private reachable development server.
 - A running GitHub workflow without Firebase/Kakao/OpenRouter credentials cannot prove live API behaviour.
 - Additional work may be required based on actual compile/test/device results, especially collaborative preference voting and existing historical accounts.
+
+## Shared team QA
+Track findings in https://github.com/felixcwj/Mobile_Programming/issues/5. Do not send Firebase service account keys or tokens in issues or chat.
 
 ## Feedback format
 Create one GitHub issue per reproducible defect: device, account type (no personal info), steps, expected, actual, screenshot with secrets removed, severity, and affected endpoint.
