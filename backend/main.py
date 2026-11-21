@@ -343,6 +343,25 @@ def my_profile(user: Annotated[dict, Depends(current_user)]):
     return {k: data.get(k) for k in ("id", "nickname", "email", "name", "phone", "profile_photo")}
 
 
+class ProfilePhotoUpdate(BaseModel):
+    profile_photo: str | None = Field(default=None, max_length=400_000)
+
+    @model_validator(mode="after")
+    def verify_photo(self):
+        if self.profile_photo is not None:
+            _validate_profile_photo(self.profile_photo)
+        return self
+
+
+@app.put("/users/me/photo")
+def update_profile_photo(body: ProfilePhotoUpdate, user: Annotated[dict, Depends(current_user)]):
+    ref = db.collection("users").document(user["uid"])
+    if not ref.get().exists:
+        raise HTTPException(404, "프로필 정보를 찾을 수 없습니다.")
+    ref.update({"profile_photo": body.profile_photo, "updated_at": firestore.SERVER_TIMESTAMP})
+    return {"saved": True}
+
+
 @app.post("/auth/verify-password")
 async def verify_password(body: PasswordRequest, user: Annotated[dict, Depends(current_user)]):
     try:

@@ -1,0 +1,29 @@
+name: PlanIt team integration (Flutter)
+on:
+  push:
+    branches:
+      - experiment/planit-team-integration-20261122
+  workflow_dispatch:
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Apply integration implementation
+        run: python3 integration/apply_frontend.py
+      - name: Resolve Flutter dependencies
+        working-directory: frontend
+        run: flutter pub get
+      - name: Static analysis
+        working-directory: frontend
+        run: flutter analyze
+      - name: Widget tests
+        working-directory: frontend
+        run: flutter test
