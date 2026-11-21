@@ -28,6 +28,21 @@ jobs:
         working-directory: frontend
         run: flutter test
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build Android debug APK (Android emulator backend)
+        working-directory: frontend
+        run: flutter build apk --debug --dart-define=PLANIT_API_BASE_URL=http://10.0.2.2:8000
+      - name: Upload Android emulator APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: planit-integrated-android-emulator
+          path: frontend/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
   backend:
     runs-on: ubuntu-latest
     steps:
