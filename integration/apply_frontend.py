@@ -38,28 +38,8 @@ replace("lib/screens/profile/account_edit_screen.dart",
         "maxLength: widget.editPassword ? 128 : 30,",
         "maxLength: widget.editPassword ? 20 : 12,")
 replace("lib/screens/profile/account_edit_screen.dart",
-        "r'^[a-zA-Z0-9_]{4,30}
-
-# HTTP is permitted on the Android emulator only in the debug flavor.
-# Release builds retain the platform default (HTTPS required).
-debug_manifest = frontend / "android/app/src/debug/AndroidManifest.xml"
-debug_manifest.write_text("""<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <uses-permission android:name="android.permission.INTERNET" />
-  <application android:usesCleartextTraffic="true" />
-</manifest>
-""")
-",
-        "r'^[a-zA-Z0-9_]{4,12}
-
-# HTTP is permitted on the Android emulator only in the debug flavor.
-# Release builds retain the platform default (HTTPS required).
-debug_manifest = frontend / "android/app/src/debug/AndroidManifest.xml"
-debug_manifest.write_text("""<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <uses-permission android:name="android.permission.INTERNET" />
-  <application android:usesCleartextTraffic="true" />
-</manifest>
-""")
-")
+        "r'^[a-zA-Z0-9_]{4,30}$'",
+        "r'^[a-zA-Z0-9_]{4,12}$'")
 replace("lib/screens/profile/account_edit_screen.dart",
         "'영문, 숫자, 밑줄로 4~30자 입력해 주세요.'",
         "'영문, 숫자, 밑줄로 4~12자 입력해 주세요.'")
