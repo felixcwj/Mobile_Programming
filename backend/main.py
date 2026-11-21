@@ -330,6 +330,7 @@ async def login(body: LoginRequest):
         "expires_in": int(result["expiresIn"]),
         "refresh_token": result["refreshToken"],
         "uid": result["localId"],
+        "email": account.email,
     }
 
 

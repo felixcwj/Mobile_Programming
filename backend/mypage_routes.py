@@ -11,14 +11,14 @@ from pydantic import BaseModel, Field, model_validator
 
 class ProfileEdit(BaseModel):
     nickname: str = Field(min_length=2, max_length=12)
-    name: str = Field(min_length=1, max_length=50)
-    phone: str = Field(min_length=10, max_length=20)
+    name: str | None = Field(default=None, min_length=1, max_length=50)
+    phone: str | None = Field(default=None, min_length=10, max_length=20)
 
     @model_validator(mode="after")
     def check(self):
-        if self.nickname != self.nickname.strip() or not self.name.strip():
+        if self.nickname != self.nickname.strip() or (self.name is not None and not self.name.strip()):
             raise ValueError("닉네임이나 이름 앞뒤에 불필요한 공백을 사용할 수 없습니다.")
-        if not re.fullmatch(r"01[016789]\d{7,8}", self.phone.replace("-", "")):
+        if self.phone is not None and not re.fullmatch(r"01[016789]\d{7,8}", self.phone.replace("-", "")):
             raise ValueError("전화번호 형식이 올바르지 않습니다.")
         return self
 
@@ -183,13 +183,13 @@ def make_mypage_router(db, current_user, nickname_key, password_login):
                     raise HTTPException(409, "이미 사용 중인 닉네임입니다.")
                 old_reservation = old_ref.get(transaction=transaction)
                 old_owned = old_reservation.exists and (old_reservation.to_dict() or {}).get("uid") == uid
-            transaction.update(ref, {
-                "nickname": body.nickname,
-                "nickname_key": new_nickname_key,
-                "name": body.name.strip(),
-                "phone": body.phone.replace("-", ""),
-                "updated_at": firestore.SERVER_TIMESTAMP,
-            })
+            updates = {"nickname": body.nickname, "nickname_key": new_nickname_key,
+                       "updated_at": firestore.SERVER_TIMESTAMP}
+            if body.name is not None:
+                updates["name"] = body.name.strip()
+            if body.phone is not None:
+                updates["phone"] = body.phone.replace("-", "")
+            transaction.update(ref, updates)
             if old_key != new_nickname_key:
                 transaction.set(new_ref, {"uid": uid, "nickname": body.nickname})
                 if old_owned:
