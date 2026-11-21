@@ -53,7 +53,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _roomsController = RoomsController(rooms: [], api: PlanitApi());
+    _roomsController = RoomsController(rooms: [],
+        api: widget.accounts == null ? null : PlanitApi());
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadRemote());
     _clock = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() {});
@@ -89,6 +90,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadRemote() async {
+    if (!_roomsController.online) return;
     try {
       await _roomsController.refresh();
       await _calendarController.refreshRemote();
@@ -210,6 +212,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (!mounted || result == null) return;
 
+    if (!_roomsController.online) {
+      final room = PlanRoom(
+        id: result.code,
+        title: result.name,
+        date: result.date,
+        inviteCode: result.code,
+        region: '지역 미정',
+        capacity: result.capacity,
+        category: result.category,
+        members: const [RoomMember(name: '나', submitted: false)],
+      );
+      _roomsController.addRoom(room);
+      _showRoomCreatedDialog(room);
+      return;
+    }
     if (_creatingRoom) return;
     setState(() => _creatingRoom = true);
     try {
@@ -294,6 +311,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
+    if (!_roomsController.online) {
+      final matches = _rooms.where((r) => r.inviteCode == inputCode);
+      _showMessage(matches.isNotEmpty ? '이미 내 목록에 있는 방이에요.' :
+        '실제 방 참여는 서버 연결 후 가능합니다.');
+      return;
+    }
     try {
       await _roomsController.joinRemote(inputCode);
       await _calendarController.refreshRemote();
