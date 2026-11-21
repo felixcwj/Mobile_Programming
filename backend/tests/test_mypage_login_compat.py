@@ -479,6 +479,9 @@ def test_nonowner_condition_edit_votes_before_applying(app_module, monkeypatch):
         return {'ok': True}
 
     monkeypatch.setattr(module, '_regenerate_room', regenerate)
+    async def verified_region(query):
+        return {'name': query, 'latitude': 37.5, 'longitude': 127.0, 'method': 'test'}
+    monkeypatch.setattr(module, '_require_supported_region', verified_region)
     client = TestClient(module.app)
     body = {'budget': 25000, 'region': '서울', 'available_date': '2026-11-15',
             'start_time': '12:00', 'end_time': '18:00', 'activities': ['전시'],
@@ -537,6 +540,9 @@ def test_member_meeting_location_edit_requires_votes(app_module, monkeypatch):
         return {'ok': True}
 
     monkeypatch.setattr(module, '_regenerate_room', regenerate)
+    async def verified_region(query):
+        return {'name': query, 'latitude': 37.5, 'longitude': 127.0, 'method': 'test'}
+    monkeypatch.setattr(module, '_require_supported_region', verified_region)
     client = TestClient(module.app)
     response = client.patch('/rooms/r1/meeting', json={'mode': 'fixed', 'region': '홍대'})
     assert response.status_code == 200, response.text
@@ -590,7 +596,7 @@ def test_ai_payload_contains_free_text_notes(app_module, monkeypatch):
         'shared_decisions': [{'change_type': 'notes', 'additional_notes': '조용한 장소'}],
         'appointment_additional_notes': '휠체어 동선',
     }
-    result = asyncio.run(module._openrouter_course(conditions, [{'place_id': 'place1', 'name': '가게', 'address': '서울', 'category': '카페'}]))
+    result = asyncio.run(module._openrouter_course(conditions, [{'place_id': 'place1', 'name': '가게', 'address': '서울', 'category': '카페', 'latitude': 37.5, 'longitude': 127.0}]))
     assert result == {'success': True}
     payload = json.loads(captured['messages'][1]['content'])
     assert payload['conditions']['preferences'][0]['additional_notes'] == '비건 식사'
