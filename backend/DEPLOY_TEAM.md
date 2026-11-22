@@ -5,8 +5,11 @@ backend host or private credentials are included in the APK.
 
 ## Set up the real HTTPS server
 
-1. Create a Vercel project linked to `felixcwj/Mobile_Programming`, setting the
-   **Root Directory** to `backend` and the Framework to FastAPI.
+1. Vercel project **`planit-team-backend`** has been created on the user's Hobby team.
+   Vercel GitHub integration cannot read this private repo, so source deployment
+   must be performed by the connected deployment tool or Vercel CLI. The
+   framework is FastAPI, and the real server URL is
+   **`https://planit-team-backend.vercel.app`**.
 2. In Vercel → Project → Settings → Environment Variables, add:
    - `FIREBASE_WEB_API_KEY`: Firebase Web API key for
      `mobile-programming-d4e67` (public Firebase client configuration)
@@ -14,9 +17,12 @@ backend host or private credentials are included in the APK.
      JSON as one **sensitive/server-only** environment variable. Never put it
      in GitHub, the APK, issue comments or this chat.
    - `KAKAO_REST_API_KEY`: Kakao REST API key, **server-only**.
-   - `OPENROUTER_API_KEY`: set only when the professor provides the evaluation
-     AI key. This key is **server-only** and does not require a new APK.
-   - `OPENROUTER_MODEL`: the model approved for the classroom evaluation.
+   - `AI_API_KEY` (or legacy `OPENROUTER_API_KEY`): set only when the professor
+     provides the paid evaluation AI key. The key is **server-only**.
+   - `AI_MODEL` (or legacy `OPENROUTER_MODEL`): chosen AI model.
+   - `AI_API_BASE_URL`: an HTTPS OpenAI-compatible chat completions endpoint,
+     defaults to OpenRouter. These three variables can be changed without
+     rebuilding the Android APK.
 3. Redeploy the reviewed integration branch, verify `GET /health` returns
    `{"status":"ok","database":"firebase"}`, then use two test accounts
    to validate the real Firebase/Kakao integrations.

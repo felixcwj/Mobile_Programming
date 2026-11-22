@@ -722,8 +722,14 @@ import json
 from datetime import time as clock_time
 
 KAKAO_REST_API_KEY = os.getenv('KAKAO_REST_API_KEY', '').strip()
-OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '').strip()
-OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'openrouter/free').strip()
+# Accept OpenAI-compatible paid providers without shipping new APKs.
+# The professor's key stays only on the backend; legacy OpenRouter values work.
+OPENROUTER_API_KEY = (os.getenv('AI_API_KEY') or os.getenv('OPENROUTER_API_KEY', '')).strip()
+OPENROUTER_MODEL = (os.getenv('AI_MODEL') or os.getenv('OPENROUTER_MODEL', 'openrouter/free')).strip()
+AI_API_BASE_URL = (os.getenv('AI_API_BASE_URL') or
+                   'https://openrouter.ai/api/v1/chat/completions').strip()
+if not AI_API_BASE_URL.startswith('https://'):
+    raise RuntimeError('AI_API_BASE_URL must use HTTPS.')
 KAKAO_SEARCH_URL = 'https://dapi.kakao.com/v2/local/search/keyword.json'
 KAKAO_ADDRESS_URL = 'https://dapi.kakao.com/v2/local/search/address.json'
 
@@ -830,7 +836,7 @@ async def _resolve_romanized_region(query: str) -> str | None:
     try:
         async with httpx.AsyncClient(timeout=8) as client:
             response = await client.post(
-                'https://openrouter.ai/api/v1/chat/completions',
+                AI_API_BASE_URL,
                 headers={'Authorization': f'Bearer {OPENROUTER_API_KEY}'},
                 json={
                     'model': OPENROUTER_MODEL, 'temperature': 0, 'max_tokens': 80,
@@ -1317,7 +1323,7 @@ async def _openrouter_course(conditions: dict, candidates: list[dict], *, includ
         "\n추천 결과를 반환하기 전에 비용 합계를 직접 검산하세요."
     )
 
-    url = 'https://openrouter.ai/api/v1/chat/completions'
+    url = AI_API_BASE_URL
     payload = {
         'model': OPENROUTER_MODEL,
         'messages': [
@@ -1512,7 +1518,7 @@ async def _translate_course_to_english(plan: dict) -> dict:
                 timeout=httpx.Timeout(connect=10, read=120, write=20, pool=10)
             ) as client:
                 response = await client.post(
-                    'https://openrouter.ai/api/v1/chat/completions',
+                    AI_API_BASE_URL,
                     headers={'Authorization': f'Bearer {OPENROUTER_API_KEY}',
                              'Content-Type': 'application/json'},
                     json=payload,
