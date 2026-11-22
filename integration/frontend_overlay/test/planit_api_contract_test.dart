@@ -16,7 +16,7 @@ void main() {
       expect(body['email'], 'tester@example.com');
       expect(body['nickname'], '테스터');
       expect(body['password_confirm'], body['password']);
-      return http.Response('{"id":"tester_1","message":"회원가입이 완료되었습니다."}', 201);
+      return http.Response('{"id":"tester_1","message":"Account created."}', 201);
     });
     final api = PlanitApi(client: client, baseUrlOverride: 'https://planit.example.com/');
     final result = await api.request('POST', '/auth/signup', authenticated: false, body: {
