@@ -24,7 +24,7 @@ def replace(path, old, new):
         raise SystemExit(f"Patch mismatch: {path}: {old[:80]!r}")
     p.write_text(content.replace(old, new))
 
-replace("pubspec.yaml", "  firebase_auth: 5.7.0\n", "  firebase_auth: 5.7.0\n  http: ^1.5.0\n")
+replace("pubspec.yaml", "  firebase_auth: 5.7.0\n", "  firebase_auth: 5.7.0\n  http: ^1.5.0\n  shared_preferences: ^2.5.3\n")
 replace("lib/screens/signup_screen.dart",
         r"RegExp(r'^[a-zA-Z0-9]{4,20}$')",
         r"RegExp(r'^[a-zA-Z0-9_]{4,12}$')")
@@ -43,6 +43,19 @@ replace("lib/screens/profile/account_edit_screen.dart",
 replace("lib/screens/profile/account_edit_screen.dart",
         "'영문, 숫자, 밑줄로 4~30자 입력해 주세요.'",
         "'영문, 숫자, 밑줄로 4~12자 입력해 주세요.'")
+replace("lib/screens/login_screen.dart",
+        "import '../services/firebase_accounts.dart';",
+        "import '../services/firebase_accounts.dart';\nimport 'profile/planit_server_settings.dart';")
+replace("lib/screens/login_screen.dart",
+        "      backgroundColor: const Color(0xFFF0F5F9),\n      body: SafeArea(",
+        "      backgroundColor: const Color(0xFFF0F5F9),\n      floatingActionButton: FloatingActionButton.extended(\n        onPressed: () => showPlanitServerSettings(context),\n        icon: const Icon(Icons.settings_ethernet),\n        label: const Text('팀 서버 연결'),\n      ),\n      body: SafeArea(")
+replace("lib/main.dart",
+        "import 'services/firebase_accounts.dart';",
+        "import 'services/firebase_accounts.dart';\nimport 'services/planit_server_config.dart';")
+replace("lib/main.dart",
+        "  // Firebase 초기화",
+        "  await PlanitServerConfig.load();\n\n  // Firebase 초기화")
+
 print("Frontend integration patch applied; run flutter pub get and flutter analyze.")
 
 # HTTP is permitted on the Android emulator only in the debug flavor.

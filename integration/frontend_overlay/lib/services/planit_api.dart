@@ -3,16 +3,18 @@ import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'planit_server_config.dart';
 
 /// All application data is authoritative on FastAPI/Firebase.
 class PlanitApi {
   PlanitApi({http.Client? client, String? baseUrlOverride})
-      : _baseUrl = baseUrlOverride ?? baseUrl,
+      : _baseUrlOverride = baseUrlOverride,
         _client = client ?? http.Client();
 
   static const baseUrl = String.fromEnvironment('PLANIT_API_BASE_URL');
   final http.Client _client;
-  final String _baseUrl;
+  final String? _baseUrlOverride;
+  String get _baseUrl => _baseUrlOverride ?? PlanitServerConfig.url;
 
   Uri _url(String path, [Map<String, String>? query]) {
     if (_baseUrl.trim().isEmpty) {
