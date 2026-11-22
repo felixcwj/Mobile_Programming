@@ -201,6 +201,22 @@ def main():
             assert after_confirmation["is_stale"] is False, (
                 "The first confirmation of the same date must not erase the course"
             )
+
+            shifted = (start + timedelta(days=1)).date()
+            moved = check(client.patch(
+                f"/rooms/{room_id}/appointment/date", headers=a,
+                json={"date": shifted.isoformat(), "version": 1},
+            ))
+            assert moved["appointment"]["version"] == 2
+            assert moved["appointment"]["date"] == shifted.isoformat()
+            for header in (a, b):
+                moved_events = check(client.get(
+                    "/calendar/room-appointments", headers=header))["events"]
+                assert any(
+                    event["room_id"] == room_id and
+                    event["starts_at"].startswith(shifted.isoformat())
+                    for event in moved_events
+                )
             for header in (a, b):
                 events = check(client.get("/calendar/room-appointments",
                                           headers=header))["events"]
@@ -243,6 +259,11 @@ def main():
                 "Authorization": "Bearer " + new_login["access_token"]
             }))
             assert any(r["room_id"] == room_id for r in restored["rooms"])
+            check(client.delete(f"/rooms/{room_id}/members/me", headers=b))
+            assert all(r["room_id"] != room_id
+                       for r in check(client.get("/rooms", headers=b))["rooms"])
+            assert any(r["room_id"] == room_id
+                       for r in check(client.get("/rooms", headers=a))["rooms"])
             print("PASS: Firebase Auth/Firestore emulator, signup/login, "
                   "profiles, regions, room join, AI recommendation fixture, "
                   "confirmation, shared appointments, personal calendar CRUD and account data restoration")

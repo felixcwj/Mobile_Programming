@@ -13,6 +13,8 @@ class RoomsController extends ChangeNotifier {
   final Map<String, String> _revisions = {};
   final Map<String, String> _roomOwners = {};
   final Set<String> _confirming = {};
+  final Set<String> _recommending = {};
+  bool isRecommending(String id) => _recommending.contains(id);
   bool canConfirm(String id) => !online || _roomOwners[id] == FirebaseAuth.instance.currentUser?.uid;
   bool isConfirming(String id) => _confirming.contains(id);
   int _refreshGeneration = 0;
@@ -335,10 +337,48 @@ class RoomsController extends ChangeNotifier {
   Future<void> recommendRemote(String roomId) async {
     final service = api;
     if (service == null) throw StateError('API not configured.');
-    await service.request('POST', '/rooms/${Uri.encodeComponent(roomId)}/recommend');
-    await refresh();
+    if (_recommending.contains(roomId)) return;
+    _recommending.add(roomId);
+    if (!_disposed) notifyListeners();
+    try {
+      await service.request('POST',
+          '/rooms/${Uri.encodeComponent(roomId)}/recommend',
+          timeout: const Duration(seconds: 180));
+      await refresh();
+    } finally {
+      _recommending.remove(roomId);
+      if (!_disposed) notifyListeners();
+    }
   }
 
+  Future<bool> changeConfirmedDateRemote(String roomId, DateTime date) async {
+    final service = api;
+    if (service == null) throw StateError('API not configured.');
+    final latest = await service.request('GET',
+        '/rooms/${Uri.encodeComponent(roomId)}/appointment');
+    final appointment = latest['appointment'];
+    final version = appointment is Map ? (appointment['version'] as num?)?.toInt() : null;
+    if (version == null) {
+      throw const PlanitApiException('확정된 약속 정보를 확인할 수 없습니다.');
+    }
+    final day = '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+    final result = await service.request('PATCH',
+        '/rooms/${Uri.encodeComponent(roomId)}/appointment/date',
+        body: {'date': day, 'version': version},
+        timeout: const Duration(seconds: 180));
+    await refresh();
+    return result['proposal_created'] == true;
+  }
+
+  Future<void> leaveRemote(String roomId) async {
+    final service = api;
+    if (service == null) throw StateError('API not configured.');
+    await service.request('DELETE',
+        '/rooms/${Uri.encodeComponent(roomId)}/members/me');
+    await refresh();
+  }
   Future<bool> confirmRemote(String roomId) async {
     final service = api;
     if (service == null) throw StateError('API not configured.');

@@ -35,6 +35,22 @@ class RoomDetailScreen extends StatelessWidget {
           Theme(data: profileTheme(context), child: child!),
     );
     if (date == null || !context.mounted) return;
+    if (controller.online && room.status == RoomStatus.confirmed) {
+      try {
+        final proposed = await controller.changeConfirmedDateRemote(room.id, date);
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(proposed
+              ? '약속 날짜 변경 요청을 보냈습니다. 참여자 동의 후 변경됩니다.'
+              : '확정된 약속 날짜를 변경했습니다.'),
+        ));
+      } on PlanitApiException catch (e) {
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+      return;
+    }
     final time = await showScrollTimePicker(
       context,
       initialMinutes: room.date == null
@@ -90,6 +106,38 @@ class RoomDetailScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _leaveRoom(BuildContext context) async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('약속방에서 나갈까요?'),
+        content: const Text('본인만 방에서 나가며 다른 참여자의 약속과 일정은 유지됩니다.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('나가기')),
+        ],
+      ),
+    );
+    if (accepted != true || !context.mounted) return;
+    try {
+      if (controller.online) {
+        await controller.leaveRemote(roomId);
+      } else {
+        throw const PlanitApiException('서버 연결 후 방에서 나갈 수 있습니다.');
+      }
+      if (!context.mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('약속방에서 나갔습니다.')),
+      );
+    } on PlanitApiException catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    }
+  }
   Future<void> _copyCode(BuildContext context, String code) async {
     try {
       await Clipboard.setData(ClipboardData(text: code));
@@ -109,6 +157,9 @@ class RoomDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
     builder: (context, _) {
+      if (!controller.rooms.any((r) => r.id == roomId)) {
+        return const SizedBox.shrink();
+      }
       final room = controller.room(roomId);
       final ownMembers = room.members.where((member) => member.name == '나');
       final me = ownMembers.isEmpty ? null : ownMembers.first;
@@ -156,7 +207,7 @@ class RoomDetailScreen extends StatelessWidget {
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),
-                if (room.date != null)
+                if (room.date != null && room.status != RoomStatus.confirmed)
                   TextButton(
                     onPressed: () => _removeSchedule(context),
                     child: const Text('일정 해제', style: TextStyle(fontSize: 12)),
@@ -226,8 +277,9 @@ class RoomDetailScreen extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.auto_awesome),
-                  label: const Text('AI 다시 추천받기'),
-                  onPressed: () async {
+                  label: Text(controller.isRecommending(roomId)
+                      ? 'AI 추천 생성 중…' : 'AI 다시 추천받기'),
+                  onPressed: controller.isRecommending(roomId) ? null : () async {
                     try {
                       await controller.recommendRemote(roomId);
                     } on PlanitApiException catch (e) {
@@ -286,6 +338,17 @@ class RoomDetailScreen extends StatelessWidget {
                       onConfirmed: onConfirmed,
                     ),
                   ),
+                ),
+              ),
+            ],
+            if (controller.online) ...[
+              const SizedBox(height: 22),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => _leaveRoom(context),
+                  icon: const Icon(Icons.exit_to_app, size: 18),
+                  label: const Text('약속방 나가기'),
                 ),
               ),
             ],

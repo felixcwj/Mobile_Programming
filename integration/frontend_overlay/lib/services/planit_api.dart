@@ -34,6 +34,7 @@ class PlanitApi {
     Map<String, dynamic>? body,
     Map<String, String>? query,
     bool authenticated = true,
+    Duration timeout = const Duration(seconds: 45),
   }) async {
     final headers = <String, String>{'Content-Type': 'application/json'};
     if (authenticated) {
@@ -54,7 +55,7 @@ class PlanitApi {
         'PATCH' => _client.patch(url, headers: headers, body: payload),
         'DELETE' => _client.delete(url, headers: headers),
         _ => throw ArgumentError.value(method),
-      }).timeout(const Duration(seconds: 45));
+      }).timeout(timeout);
     } on TimeoutException {
       throw const PlanitApiException('서버 응답이 지연되고 있습니다. 다시 시도해 주세요.');
     } on PlanitApiException {
