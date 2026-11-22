@@ -1267,9 +1267,130 @@ def _course_note(value: str) -> str:
     return " ".join(chunk for chunk in chunks if not _MATH_REQUEST.search(chunk)).strip()
 
 
+def _verified_kakao_fallback(conditions: dict, candidates: list[dict]) -> dict:
+    """No-cost deterministic recommendation from REAL Kakao place IDs only.
+
+    Does not claim AI-generated output, measured travel times, opening hours,
+    availability or real prices. Used before the paid AI key arrives.
+    """
+    from collections import Counter
+    from datetime import timedelta
+
+    if not candidates:
+        raise HTTPException(422, '실제 장소 후보가 없습니다.')
+    start = clock_time.fromisoformat(conditions['start_time'])
+    end = clock_time.fromisoformat(conditions['end_time'])
+    start_min = start.hour * 60 + start.minute
+    end_min = end.hour * 60 + end.minute
+    available_minutes = end_min - start_min
+    if available_minutes < 15:
+        raise HTTPException(409, '약속 시간이 너무 짧습니다. 최소 15분 이상 필요합니다.')
+
+    frequency = Counter()
+    for pref in conditions['preferences']:
+        frequency.update(
+            a.strip() for a in pref.get('activities', [])
+            if isinstance(a, str) and a.strip()
+        )
+    approved = conditions.get('shared_decisions', [])
+    removed = set()
+    required = []
+    for decision in approved:
+        if decision.get('change_type') == 'replace' and decision.get('from_activity'):
+            removed.add(decision['from_activity'].strip().casefold())
+        if decision.get('change_type') in ('replace', 'add') and decision.get('to_activity'):
+            required.append(decision['to_activity'].strip())
+    activities = [name for name in sorted(frequency, key=lambda x: (-frequency[x], x))
+                  if name.casefold() not in removed]
+    ordered_targets = list(dict.fromkeys(required + activities))
+    area = conditions['meeting_area']
+
+    def matching(place, target):
+        value = (place.get('category', '') + ' ' + place.get('name', '')).casefold()
+        target = target.casefold()
+        synonyms = {
+            '카페': ('카페', '커피', 'coffee'),
+            '식사': ('음식점', '식당', '한식', '양식', '일식'),
+            '맛집': ('음식점', '식당', '한식', '양식', '일식'),
+            '산책': ('공원', '산책', '호수', '수변'),
+            '전시': ('전시', '미술관', '박물관', '갤러리'),
+            '영화': ('영화', '시네마', 'cinema'),
+        }
+        keys = synonyms.get(target, (target,))
+        return any(term.casefold() in value for term in keys)
+
+    ranked_places = sorted(candidates, key=lambda place: (
+        _distance_km(area, place),
+        str(place.get('place_id', '')),
+    ))
+    limit = min(len(candidates), 3, max(1, available_minutes // 65))
+    chosen = []
+    for target in required:
+        eligible = [p for p in ranked_places if p['place_id'] not in {
+            x[0]['place_id'] for x in chosen} and matching(p, target)]
+        if not eligible:
+            raise HTTPException(422, f'승인된 활동을 충족하는 실제 장소가 없습니다: {target}')
+        chosen.append((eligible[0], target))
+    if len(chosen) > limit:
+        raise HTTPException(422, '공통 시간 안에 모든 승인된 활동을 넣을 수 없습니다.')
+
+    for target in ordered_targets:
+        if len(chosen) >= limit:
+            break
+        eligible = [p for p in ranked_places if p['place_id'] not in {
+            x[0]['place_id'] for x in chosen} and matching(p, target)]
+        if eligible:
+            chosen.append((eligible[0], target))
+    for place in ranked_places:
+        if len(chosen) >= limit:
+            break
+        if place['place_id'] not in {x[0]['place_id'] for x in chosen}:
+            chosen.append((place, (place.get('category') or '장소 탐방').split('>')[-1].strip()))
+    if not chosen:
+        raise HTTPException(422, '추천할 수 있는 실제 장소가 없습니다.')
+
+    count = len(chosen)
+    gap = 10
+    slot_minutes = max(1, (available_minutes - gap * (count - 1)) // count)
+    if slot_minutes < 15 and count > 1:
+        chosen = chosen[:1]
+        count = 1
+        slot_minutes = available_minutes
+    budget = max(0, int(conditions['budget_per_person']))
+    # Unverified placeholder estimates are deliberately conservative and
+    # clearly labeled. Never imply Kakao supplies actual menu/ticket prices.
+    estimated_cost = min(5000, budget // count) if count else 0
+    minutes = start_min
+    stops = []
+    for place, activity in chosen:
+        next_minute = min(end_min, minutes + slot_minutes)
+        def t(value):
+            return clock_time(value // 60, value % 60)
+        stops.append(VerifiedCourseStop(
+            start_time=t(minutes), end_time=t(next_minute),
+            place_id=place['place_id'],
+            activity=activity or '장소 탐방',
+            estimated_cost=estimated_cost,
+        ))
+        minutes = next_minute + gap
+
+    plan = VerifiedCoursePlan(
+        title='실제 장소 기반 약속 코스',
+        date=date.fromisoformat(conditions['date']),
+        summary='입력한 취향과 실제 카카오맵 장소를 기준으로 자동 구성한 일정입니다.',
+        stops=stops,
+        notes=('AI 호출 없이 구성한 사전 연습용 자동 추천입니다. '
+               '실제 영업시간·이동경로·혼잡도·가격은 확인되지 않았습니다. '
+               '표시된 비용은 실제 메뉴 가격이 아닌 참고용 추정치입니다.'),
+    )
+    enriched = _check_and_enrich(plan, conditions, candidates)
+    enriched['recommendation_source'] = 'kakao_verified_rule_based'
+    return enriched
+
+
 async def _openrouter_course(conditions: dict, candidates: list[dict], *, include_notes: bool = True) -> dict:
     if not OPENROUTER_API_KEY:
-        raise HTTPException(503, 'OPENROUTER_API_KEY가 설정되지 않았습니다.')
+        return _verified_kakao_fallback(conditions, candidates)
     def note(value):
         return _course_note(value or '') if include_notes else ''
 
@@ -1373,6 +1494,9 @@ async def _openrouter_course(conditions: dict, candidates: list[dict], *, includ
             # user data, so log only the HTTP status and model.
             print(f'[PlanIt course] Upstream HTTP {response.status_code}: model={model}')
             if response.status_code == 429:
+                # Rate limited free AI must not block classroom practice.
+                if os.getenv('ENABLE_KAKAO_FALLBACK', '1') == '1':
+                    return _verified_kakao_fallback(conditions, candidates)
                 raise HTTPException(429, 'OpenRouter 요청 제한(429)입니다. 무료 모델/계정 사용량을 확인하세요.')
             if response.status_code == 402:
                 raise HTTPException(402, 'OpenRouter 계정의 무료 이용 한도 또는 크레딧을 확인하세요.')
@@ -1709,7 +1833,8 @@ async def _regenerate_room(room_id: str, uid: str) -> dict:
     result = {
         'room_id': room_id,
         'generated_at': datetime.now(timezone.utc),
-        'model': OPENROUTER_MODEL,
+        'model': ('kakao-verified-rule-based' if plan.get('recommendation_source')
+                  else OPENROUTER_MODEL),
         'source_revision': conditions['source_revision'],
         'meeting_mode': conditions['meeting_mode'],
         'meeting_area': conditions['meeting_area'],
