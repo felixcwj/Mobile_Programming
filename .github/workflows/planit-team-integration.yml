@@ -40,13 +40,23 @@ jobs:
       - name: Build Android debug APK (Android emulator backend)
         working-directory: frontend
         run: flutter build apk --debug --dart-define=PLANIT_API_BASE_URL=http://10.0.2.2:8000
-      - name: Upload Android emulator APK
+      - name: Upload Android emulator and LAN-debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: planit-integrated-android-emulator
+          name: planit-android-dev-lan
           path: frontend/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
+      - name: Build universal Android release APK (Lenovo Tab M8 and Galaxy)
+        working-directory: frontend
+        run: flutter build apk --release --dart-define=PLANIT_API_BASE_URL=
+      - name: Upload universal Android release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: planit-android-tablet-release
+          path: frontend/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
 
   android-emulator:
     name: Boot APK and stress-test login UI
@@ -56,18 +66,18 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: planit-integrated-android-emulator
+          name: planit-android-tablet-release
           path: android-smoke
       - name: Boot Android emulator and test APK
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: 33
           target: default
           arch: x86_64
           emulator-boot-timeout: 480
-          emulator-options: -no-window -gpu off -no-snapshot -noaudio -no-boot-anim -no-metrics
+          emulator-options: -no-window -gpu off -no-snapshot -noaudio -no-boot-anim -no-metrics -memory 2048 -cores 2 -skin 800x1280
           script: |
-            adb install android-smoke/app-debug.apk
+            adb install android-smoke/app-release.apk
             adb logcat -c
             adb shell am start -W -n com.example.meetsync/.MainActivity
             sleep 12
@@ -80,7 +90,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: planit-android-login-smoke
+          name: planit-android-tablet-smoke
           path: android-smoke/login-screen.png
           if-no-files-found: ignore
           retention-days: 7
