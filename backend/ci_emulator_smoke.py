@@ -196,6 +196,11 @@ def main():
                 f"/rooms/{room_id}/appointment/confirm", headers=a,
                 json={"recommendation_revision": revision}))
             assert confirmed["appointment"]["version"] == 1
+            after_confirmation = check(
+                client.get(f"/rooms/{room_id}/recommendation", headers=b))
+            assert after_confirmation["is_stale"] is False, (
+                "The first confirmation of the same date must not erase the course"
+            )
             for header in (a, b):
                 events = check(client.get("/calendar/room-appointments",
                                           headers=header))["events"]

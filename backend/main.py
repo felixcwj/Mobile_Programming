@@ -1018,6 +1018,11 @@ def _collect_constraints(room_id: str, uid: str) -> dict:
 
 
 def _conditions_revision(room: dict, prefs: list[dict], shared_decisions: list[dict] | None = None, personalization: list[dict] | None = None) -> str:
+    confirmed = room.get('confirmed_appointment') or {}
+    possible_dates = {str(p.get('available_date')) for p in prefs if p.get('available_date')}
+    # Confirming the already-proposed date does not change the course inputs.
+    # A later genuinely changed date does invalidate the old recommendation.
+    effective_date = confirmed.get('date') or (next(iter(possible_dates)) if len(possible_dates) == 1 else None)
     source = {
         'members': sorted(room.get('member_uids', [])),
         'meeting_mode': room.get('meeting_mode', 'middle'),
@@ -1025,7 +1030,7 @@ def _conditions_revision(room: dict, prefs: list[dict], shared_decisions: list[d
         'shared_decisions': shared_decisions or [],
         'member_personalization': personalization or [],
         'appointment_additional_notes': (room.get('confirmed_appointment') or {}).get('additional_notes', ''),
-        'confirmed_date': (room.get('confirmed_appointment') or {}).get('date'),
+        'effective_date': effective_date,
         'prefs': sorted([
             {k: p.get(k) for k in ('uid', 'budget', 'region',
                                    'available_date', 'start_time', 'end_time', 'activities', 'additional_notes')}
