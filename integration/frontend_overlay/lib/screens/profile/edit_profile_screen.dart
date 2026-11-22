@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/user_profile.dart';
 import '../../services/profile_repository.dart';
 import '../../services/firebase_accounts.dart';
+import '../../services/planit_api.dart';
 import '../../services/profile_photo.dart';
 import 'account_edit_screen.dart';
 import 'profile_widgets.dart';
@@ -56,7 +57,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         SnackBar(
           content: Text(
             widget.repository is FirebaseProfileRepository
-                ? '사진을 열지 못했어요. 750KB 이하의 이미지를 선택해 주세요.'
+                ? '사진을 열지 못했어요. 250KB 이하의 이미지를 선택해 주세요.'
                 : '사진을 열지 못했어요. 5MB 이하의 이미지로 다시 선택해 주세요.',
           ),
         ),
@@ -67,14 +68,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _save() async {
-    if (_nickname.text.trim().isEmpty || _nickname.text.trim().length > 20) {
-      _formKey.currentState!.validate();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('닉네임은 1~20자로 입력해 주세요.')));
-      return;
-    }
-    if (!_formKey.currentState!.validate()) return;
+    if (_saving || _picking || !_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
       final latest = await widget.repository.load();
@@ -85,6 +79,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
       await widget.repository.save(updated);
       if (mounted) Navigator.of(context).pop(updated);
+    } on PlanitApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -172,13 +172,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       child: TextFormField(
                         key: const ValueKey('nickname'),
                         controller: _nickname,
-                        maxLength: 20,
+                        maxLength: 12,
                         decoration: const InputDecoration(
                           labelText: '닉네임',
                           border: OutlineInputBorder(),
                         ),
-                        validator: (v) => v == null || v.trim().isEmpty
-                            ? '닉네임을 입력해 주세요.'
+                        validator: (v) => v == null || v.trim().length < 2 || v.trim().length > 12
+                            ? '닉네임은 2~12자로 입력해 주세요.'
                             : null,
                       ),
                     ),
