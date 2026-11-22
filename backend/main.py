@@ -1,5 +1,6 @@
 """Plan It Firebase-backed authentication API."""
 import os
+import json
 import base64
 import binascii
 from io import BytesIO
@@ -32,14 +33,25 @@ import asyncio
 load_dotenv()
 
 API_KEY = os.getenv("FIREBASE_WEB_API_KEY", "").strip()
-SERVICE_ACCOUNT = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "serviceAccountKey.json")
+SERVICE_ACCOUNT = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "serviceAccountKey.json").strip()
 if not API_KEY:
-    raise RuntimeError(".env 파일에 FIREBASE_WEB_API_KEY를 설정하세요.")
-if not os.path.isfile(SERVICE_ACCOUNT):
-    raise RuntimeError(f"Firebase 서비스 계정 파일을 찾을 수 없습니다: {SERVICE_ACCOUNT}")
+    raise RuntimeError("FIREBASE_WEB_API_KEY is required.")
+
+# On Vercel the credential is supplied as a protected JSON environment variable.
+# For local development the same variable may contain a local file path.
+# Neither form is written to logs or returned to clients.
+if SERVICE_ACCOUNT.startswith("{"):
+    try:
+        service_account_credential = credentials.Certificate(json.loads(SERVICE_ACCOUNT))
+    except (ValueError, KeyError, TypeError) as exc:
+        raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_JSON contains invalid service account JSON.") from exc
+elif os.path.isfile(SERVICE_ACCOUNT):
+    service_account_credential = credentials.Certificate(SERVICE_ACCOUNT)
+else:
+    raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_JSON must be a JSON value or a local credential file path.")
 
 firebase_admin.initialize_app(
-    credentials.Certificate(SERVICE_ACCOUNT),
+    service_account_credential,
     options={"httpTimeout": 10},
 )
 db = firestore.client()
