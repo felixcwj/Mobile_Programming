@@ -83,6 +83,7 @@ void main() {
       client: MockClient((_) async => http.Response(
         jsonEncode({'detail': {'message': '아직 조건을 제출하지 않은 참여자가 있습니다.'}}),
         409,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       )),
     );
     await expectLater(
