@@ -665,3 +665,91 @@ def test_confirmed_date_change_alters_revision_without_changing_notes(app_module
     before = module._conditions_revision(room, prefs)
     room["confirmed_appointment"]["date"] = "2026-11-20"
     assert module._conditions_revision(room, prefs) != before
+
+
+def test_kakao_region_checks_real_admin_area_and_station_not_random_cafe(app_module, monkeypatch):
+    """A cafe named Paris must not make Paris a supported Korean meeting region."""
+    import asyncio
+
+    module = app_module
+    monkeypatch.setattr(module, "KAKAO_REST_API_KEY", "test-only-key")
+    monkeypatch.setattr(module, "OPENROUTER_API_KEY", "")
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, documents):
+            self.documents = documents
+
+        def json(self):
+            return {"documents": self.documents}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def get(self, url, headers, params):
+            query = params["query"]
+            if url == module.KAKAO_ADDRESS_URL:
+                if query == "서울":
+                    return Response([{
+                        "address_name": "서울특별시",
+                        "address": {"region_1depth_name": "서울특별시"},
+                        "x": "126.978", "y": "37.566",
+                    }])
+                return Response([])
+            if query == "성수":
+                return Response([{
+                    "id": "1234", "place_name": "성수역",
+                    "category_name": "교통,수송 > 지하철역",
+                    "address_name": "서울 성동구", "x": "127.056", "y": "37.544",
+                }])
+            return Response([{
+                "id": "5678", "place_name": query,
+                "category_name": "음식점 > 카페",
+                "address_name": "서울 마포구", "x": "126.92", "y": "37.55",
+            }])
+
+    monkeypatch.setattr(module.httpx, "AsyncClient", lambda **_: FakeClient())
+
+    assert asyncio.run(module._lookup_kakao_region("서울"))["method"] == "kakao_address"
+    assert asyncio.run(module._lookup_kakao_region("성수"))["method"] == "kakao_station"
+    assert asyncio.run(module._lookup_kakao_region("Paris")) is None
+    assert asyncio.run(module._lookup_kakao_region("ㅁㄴㅇㄹ")) is None
+
+    module.app.dependency_overrides[module.current_user] = lambda: {"uid": "test-user"}
+    try:
+        client = TestClient(module.app)
+        assert client.get("/places/validate-region", params={"query": "서울"}).json()["valid"] is True
+        for invalid in ("Paris", "ㅁㄴㅇㄹ"):
+            response = client.get("/places/validate-region", params={"query": invalid})
+            assert response.status_code == 200
+            assert response.json()["valid"] is False
+            assert response.json()["message"]
+    finally:
+        module.app.dependency_overrides.clear()
+
+
+def test_room_preferences_reject_invalid_budget_time_and_activity(app_module):
+    valid = {
+        "budget": 30000,
+        "region": "서울",
+        "available_date": "2026-12-01",
+        "start_time": "13:00",
+        "end_time": "18:00",
+        "activities": ["카페"],
+    }
+    assert app_module.RoomPreferenceRequest(**valid).budget == 30000
+    for changes in (
+        {"budget": -1},
+        {"budget": "아무거나"},
+        {"end_time": "12:00"},
+        {"activities": [""]},
+        {"activities": ["x" * 41]},
+        {"additional_notes": "x" * 1001},
+    ):
+        with pytest.raises(ValueError):
+            app_module.RoomPreferenceRequest(**{**valid, **changes})
