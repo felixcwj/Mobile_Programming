@@ -250,6 +250,7 @@ class RoomsController extends ChangeNotifier {
             submitted: true, summary: (myPrefs['additional_notes'] ?? '').toString());
         }
         final stops = <CourseStop>[];
+        String? recommendationSource;
         var roomStatus = statusByRoom[id] == 'confirmed'
             ? RoomStatus.confirmed : RoomStatus.collecting;
         try {
@@ -257,6 +258,9 @@ class RoomsController extends ChangeNotifier {
               'GET', '/rooms/${Uri.encodeComponent(id)}/recommendation');
           if (recommendation['is_stale'] != true) {
             final plan = recommendation['plan'];
+            if (plan is Map && plan['recommendation_source'] == 'kakao_verified_rule_based') {
+              recommendationSource = 'kakao_verified_rule_based';
+            }
             if (plan is Map && plan['stops'] is List) {
               for (final stop in plan['stops'] as List) {
                 if (stop is! Map) continue;
@@ -264,6 +268,7 @@ class RoomsController extends ChangeNotifier {
                   time: (stop['start_time'] ?? '').toString(),
                   title: (stop['name'] ?? stop['activity'] ?? '').toString(),
                   description: '${stop['activity'] ?? ''} · ${stop['address'] ?? ''}',
+                  placeId: stop['place_id']?.toString(),
                 ));
               }
               final revision = recommendation['source_revision'];
@@ -289,6 +294,7 @@ class RoomsController extends ChangeNotifier {
           capacity: (detail['max_members'] as num?)?.toInt() ?? 8,
           status: roomStatus,
           course: stops,
+          recommendationSource: recommendationSource,
         ));
       } on PlanitApiException {
         rethrow;

@@ -31,10 +31,12 @@ class CourseStop {
     required this.time,
     required this.title,
     required this.description,
+    this.placeId,
   });
   final String time;
   final String title;
   final String description;
+  final String? placeId;
 }
 
 class PlanRoom {
@@ -43,6 +45,7 @@ class PlanRoom {
     required this.title,
     this.date,
     this.end,
+    this.recommendationSource,
     required this.region,
     required this.inviteCode,
     required List<RoomMember> members,
@@ -57,6 +60,7 @@ class PlanRoom {
   final String title;
   final DateTime? date;
   final DateTime? end;
+  final String? recommendationSource;
   final String region;
   final String inviteCode;
   final List<RoomMember> members;
@@ -82,7 +86,8 @@ class PlanRoom {
     title: title,
     date: clearDate ? null : date ?? this.date,
     end: clearDate ? null : end ?? this.end,
-    region: region,
+    recommendationSource: recommendationSource,
+    region: region;
     inviteCode: inviteCode,
     members: members ?? this.members,
     status: status ?? this.status,
