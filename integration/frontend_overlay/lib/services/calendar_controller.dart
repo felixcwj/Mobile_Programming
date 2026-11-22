@@ -13,6 +13,8 @@ class CalendarController extends ChangeNotifier {
   final RoomsController roomsController;
   final Map<String, CalendarEvent> _personalEvents = {};
   final Map<String, int> _remoteVersions = {};
+  int _refreshGeneration = 0;
+  bool _disposed = false;
   bool get online => roomsController.online;
   final Map<EventCategory, int> _categoryColors = {};
   int _nextId = 0;
@@ -133,6 +135,8 @@ class CalendarController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _refreshGeneration++;
     roomsController.removeListener(_roomsChanged);
     super.dispose();
   }
@@ -160,7 +164,8 @@ class CalendarController extends ChangeNotifier {
 
   Future<void> refreshRemote() async {
     final service = roomsController.api;
-    if (service == null) return;
+    if (service == null || _disposed) return;
+    final generation = ++_refreshGeneration;
     final now = DateTime.now();
     // Query windows stay below FastAPI's one-year limit.
     final windows = [
@@ -192,6 +197,7 @@ class CalendarController extends ChangeNotifier {
         versions[event.id] = (raw['version'] as num?)?.toInt() ?? 1;
       }
     }
+    if (_disposed || generation != _refreshGeneration) return;
     _personalEvents..clear()..addAll(fetched);
     _remoteVersions..clear()..addAll(versions);
     notifyListeners();
