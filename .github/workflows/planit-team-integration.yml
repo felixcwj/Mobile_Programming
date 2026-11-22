@@ -43,36 +43,50 @@ jobs:
           path: frontend/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 7
-      - name: Boot APK in Android emulator and stress the login screen
+
+  android-emulator:
+    name: Boot APK and stress-test login UI
+    needs: flutter
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: planit-integrated-android-emulator
+          path: android-smoke
+      - name: Boot Android emulator and test APK
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           target: google_apis
           arch: x86_64
+          emulator-boot-timeout: 420
           script: |
-            adb install frontend/build/app/outputs/flutter-apk/app-debug.apk
+            adb install android-smoke/app-debug.apk
+            adb logcat -c
             adb shell am start -W -n com.example.meetsync/.MainActivity
-            sleep 8
-            test -n "$(adb shell pidof com.example.meetsync)"
+            sleep 12
+            adb shell pidof com.example.meetsync
             for i in $(seq 1 15); do
               adb shell input swipe 230 690 230 130 70
+              adb shell input swipe 230 150 230 690 70
               adb shell input tap 200 650
             done
-            test -n "$(adb shell pidof com.example.meetsync)"
+            adb shell pidof com.example.meetsync
             if adb logcat -d -b crash | grep -A 15 "FATAL EXCEPTION" | grep -q "com.example.meetsync"; then
               echo "App crashed during emulator interaction"
               exit 1
             fi
-            mkdir -p android-smoke
             adb exec-out screencap -p > android-smoke/login-screen.png
-      - name: Upload Android login smoke screenshot
-        uses: actions/upload-artifact@v4
+      - name: Upload Android login screenshot
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: planit-android-login-smoke
           path: android-smoke/login-screen.png
           if-no-files-found: ignore
           retention-days: 7
+
 
   backend:
     runs-on: ubuntu-latest
