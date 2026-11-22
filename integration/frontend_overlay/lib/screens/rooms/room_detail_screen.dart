@@ -138,6 +138,64 @@ class RoomDetailScreen extends StatelessWidget {
       );
     }
   }
+  Future<void> _vote(BuildContext context, String decisionId, bool approve,
+      {required bool dateRequest}) async {
+    try {
+      await controller.voteRemote(roomId, decisionId, approve,
+          dateRequest: dateRequest);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(approve ? '동의 의견을 제출했습니다.' : '변경 요청을 거절했습니다.'),
+      ));
+    } on PlanitApiException catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    }
+  }
+
+  Widget _pendingVoteCard(BuildContext context, Map<String, dynamic> item,
+      {required bool dateRequest}) {
+    final id = (dateRequest ? item['request_id'] : item['decision_id'])?.toString() ?? '';
+    final title = dateRequest
+        ? '약속 날짜 변경 요청 · ${item['date'] ?? ''}'
+        : item['change_type'] == 'preference_update'
+            ? '참여자 약속 조건 변경 요청'
+            : item['change_type'] == 'meeting_update'
+                ? '만남 지역 변경 요청'
+                : '약속 코스 변경 요청';
+    final busy = controller.isVoting('${roomId}:$id');
+    final canVote = controller.canVote(item) && !busy && id.isNotEmpty;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            if (!canVote && !busy)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text('투표 완료 또는 다른 참여자의 동의를 기다리는 중'),
+              ),
+            Row(children: [
+              TextButton(
+                onPressed: canVote ? () => _vote(context, id, true,
+                    dateRequest: dateRequest) : null,
+                child: const Text('동의'),
+              ),
+              TextButton(
+                onPressed: canVote ? () => _vote(context, id, false,
+                    dateRequest: dateRequest) : null,
+                child: const Text('거절'),
+              ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
   Future<void> _copyCode(BuildContext context, String code) async {
     try {
       await Clipboard.setData(ClipboardData(text: code));
@@ -270,6 +328,12 @@ class RoomDetailScreen extends StatelessWidget {
                   onSave: (text) => controller.saveMyPreference(roomId, text),
                 ),
               const SizedBox(height: 24),
+            ],
+            if (controller.online) ...[
+              for (final request in controller.pendingDateRequests(roomId))
+                _pendingVoteCard(context, request, dateRequest: true),
+              for (final decision in controller.pendingDecisions(roomId))
+                _pendingVoteCard(context, decision, dateRequest: false),
             ],
             if (controller.online && room.allSubmitted &&
                 room.status != RoomStatus.confirmed)

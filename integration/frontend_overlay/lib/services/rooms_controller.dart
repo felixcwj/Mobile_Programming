@@ -12,6 +12,18 @@ class RoomsController extends ChangeNotifier {
   bool get online => api != null;
   final Map<String, String> _revisions = {};
   final Map<String, String> _roomOwners = {};
+  final Map<String, List<Map<String, dynamic>>> _pendingDecisions = {};
+  final Map<String, List<Map<String, dynamic>>> _pendingDateRequests = {};
+  final Set<String> _voting = {};
+  List<Map<String, dynamic>> pendingDecisions(String id) => List.unmodifiable(_pendingDecisions[id] ?? []);
+  List<Map<String, dynamic>> pendingDateRequests(String id) => List.unmodifiable(_pendingDateRequests[id] ?? []);
+  bool isVoting(String id) => _voting.contains(id);
+  bool canVote(Map<String, dynamic> request) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final votes = request['votes'];
+    return uid != null && request['status'] == 'pending' &&
+        (votes is! Map || !votes.containsKey(uid));
+  }
   final Set<String> _confirming = {};
   final Set<String> _recommending = {};
   bool isRecommending(String id) => _recommending.contains(id);
@@ -178,6 +190,8 @@ class RoomsController extends ChangeNotifier {
     final generation = ++_refreshGeneration;
     final revisions = <String, String>{};
     final owners = <String, String>{};
+    final decisionsByRoom = <String, List<Map<String, dynamic>>>{};
+    final dateRequestsByRoom = <String, List<Map<String, dynamic>>>{};
     final list = await service.listRooms();
     final appointments = await service.request('GET', '/calendar/room-appointments');
     final dates = <String, DateTime>{};
@@ -204,6 +218,18 @@ class RoomsController extends ChangeNotifier {
       try {
         final detail = await service.getRoom(id);
         owners[id] = (detail['owner_uid'] ?? '').toString();
+        final decisions = await service.request('GET',
+            '/rooms/${Uri.encodeComponent(id)}/decisions');
+        decisionsByRoom[id] = (decisions['decisions'] as List? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .where((item) => item['status'] == 'pending').toList();
+        if (statusByRoom[id] == 'confirmed') {
+          final dateRequests = await service.request('GET',
+              '/rooms/${Uri.encodeComponent(id)}/appointment/date-requests');
+          dateRequestsByRoom[id] = (dateRequests['requests'] as List? ?? [])
+              .whereType<Map<String, dynamic>>()
+              .where((item) => item['status'] == 'pending').toList();
+        }
         final members = <RoomMember>[];
         for (final raw in detail['members'] as List? ?? []) {
           if (raw is! Map) continue;
@@ -271,6 +297,8 @@ class RoomsController extends ChangeNotifier {
     if (_disposed || generation != _refreshGeneration) return;
     _revisions..clear()..addAll(revisions);
     _roomOwners..clear()..addAll(owners);
+    _pendingDecisions..clear()..addAll(decisionsByRoom);
+    _pendingDateRequests..clear()..addAll(dateRequestsByRoom);
     _rooms..clear()..addAll(restored);
     notifyListeners();
   }
@@ -311,7 +339,7 @@ class RoomsController extends ChangeNotifier {
     await refresh();
   }
 
-  Future<void> saveConditionsRemote(String roomId, {
+  Future<bool> saveConditionsRemote(String roomId, {
     required String region,
     required DateTime date,
     required String start,
@@ -329,7 +357,7 @@ class RoomsController extends ChangeNotifier {
     final dateText = '${date.year.toString().padLeft(4, '0')}-'
         '${date.month.toString().padLeft(2, '0')}-'
         '${date.day.toString().padLeft(2, '0')}';
-    await service.request('POST',
+    final result = await service.request('POST',
         '/rooms/${Uri.encodeComponent(roomId)}/preferences', body: {
       'region': valid['resolved_region'] ?? region.trim(),
       'available_date': dateText,
@@ -340,6 +368,7 @@ class RoomsController extends ChangeNotifier {
       'additional_notes': notes,
     });
     await refresh();
+    return result['proposal_created'] == true;
   }
 
   Future<void> recommendRemote(String roomId) async {
@@ -386,6 +415,28 @@ class RoomsController extends ChangeNotifier {
     await service.request('DELETE',
         '/rooms/${Uri.encodeComponent(roomId)}/members/me');
     await refresh();
+  }
+  Future<void> voteRemote(String roomId, String decisionId, bool approve,
+      {required bool dateRequest}) async {
+    final service = api;
+    if (service == null) throw StateError('API not configured.');
+    final key = '${roomId}:${decisionId}';
+    if (_voting.contains(key)) return;
+    _voting.add(key);
+    if (!_disposed) notifyListeners();
+    try {
+      final suffix = dateRequest
+          ? '/appointment/date-requests/${Uri.encodeComponent(decisionId)}/vote'
+          : '/decisions/${Uri.encodeComponent(decisionId)}/vote';
+      await service.request('POST',
+          '/rooms/${Uri.encodeComponent(roomId)}$suffix',
+          body: {'approve': approve},
+          timeout: const Duration(seconds: 180));
+      await refresh();
+    } finally {
+      _voting.remove(key);
+      if (!_disposed) notifyListeners();
+    }
   }
   Future<bool> confirmRemote(String roomId) async {
     final service = api;

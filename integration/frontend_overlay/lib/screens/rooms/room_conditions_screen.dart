@@ -75,12 +75,17 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
     }
     setState(() => _saving = true);
     try {
-      await widget.controller.saveConditionsRemote(widget.roomId,
+      final proposed = await widget.controller.saveConditionsRemote(widget.roomId,
         region: _region.text.trim(), date: _date,
         start: _start.text.trim(), end: _end.text.trim(),
         budget: int.parse(_budget.text), activities: activities,
         notes: _notes.text.trim());
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(proposed
+            ? '조건 변경 요청을 보냈습니다. 참여자 동의를 기다립니다.'
+            : '약속 조건이 저장되었습니다.'),
+      ));
       Navigator.pop(context, true);
     } on PlanitApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
