@@ -223,6 +223,55 @@ def main():
                 assert any(event["room_id"] == room_id and
                            event["status"] == "confirmed" for event in events)
 
+            # A non-owner requests a second date change. The owner must vote;
+            # no one may silently rewrite the other member's appointment.
+            voted_date = shifted + timedelta(days=1)
+            proposed = check(client.patch(
+                f"/rooms/{room_id}/appointment/date", headers=b,
+                json={"date": voted_date.isoformat(), "version": 2},
+            ))
+            assert proposed["proposal_created"] is True
+            date_request_id = proposed["date_change_request"]["request_id"]
+            requests = check(client.get(
+                f"/rooms/{room_id}/appointment/date-requests", headers=a))
+            assert any(
+                item["request_id"] == date_request_id and item["status"] == "pending"
+                for item in requests["requests"]
+            )
+            approved = check(client.post(
+                f"/rooms/{room_id}/appointment/date-requests/{date_request_id}/vote",
+                headers=a, json={"approve": True},
+            ))
+            assert approved["date_change_request"]["status"] == "approved"
+            current = check(client.get(f"/rooms/{room_id}/appointment", headers=b))
+            assert current["appointment"]["date"] == voted_date.isoformat()
+            assert current["appointment"]["version"] == 3
+
+            # Editing an already-submitted member preference requires approval.
+            preference_proposal = check(client.post(
+                f"/rooms/{room_id}/preferences", headers=b,
+                json={"budget": 25000, "region": "서울",
+                      "available_date": start.date().isoformat(),
+                      "start_time": "13:00", "end_time": "18:00",
+                      "activities": ["카페"], "additional_notes": "조용한 실내"},
+            ))
+            assert preference_proposal["proposal_created"] is True
+            decision_id = preference_proposal["decision"]["decision_id"]
+            decisions = check(client.get(
+                f"/rooms/{room_id}/decisions", headers=a))
+            assert any(
+                d["decision_id"] == decision_id and d["status"] == "pending"
+                for d in decisions["decisions"]
+            )
+            decision = check(client.post(
+                f"/rooms/{room_id}/decisions/{decision_id}/vote",
+                headers=a, json={"approve": True},
+            ))
+            assert decision["decision"]["status"] == "approved"
+            bob_prefs = check(client.get(
+                f"/rooms/{room_id}/preferences/me", headers=b))
+            assert bob_prefs["preferences"]["budget"] == 25000
+
             event_payload = {
                 "title": "개인 일정 테스트",
                 "starts_at": start.isoformat(),
