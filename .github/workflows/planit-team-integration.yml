@@ -5,6 +5,10 @@ on:
       - experiment/planit-team-integration-20261122
   workflow_dispatch:
 
+concurrency:
+  group: ${'${{ github.workflow }}'}-${'${{ github.ref }}'}
+  cancel-in-progress: true
+
 jobs:
   flutter:
     runs-on: ubuntu-latest
