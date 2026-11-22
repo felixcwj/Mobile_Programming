@@ -61,10 +61,11 @@ jobs:
       - name: Boot Android emulator and test APK
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
-          target: google_apis
+          api-level: 29
+          target: default
           arch: x86_64
-          emulator-boot-timeout: 420
+          emulator-boot-timeout: 480
+          emulator-options: -no-window -gpu off -no-snapshot -noaudio -no-boot-anim -no-metrics
           script: |
             adb install android-smoke/app-debug.apk
             adb logcat -c
