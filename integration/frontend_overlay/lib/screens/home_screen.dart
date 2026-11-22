@@ -43,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   late final RoomsController _roomsController;
   bool _creatingRoom = false;
+  bool _loadingRemote = false;
   late final CalendarController _calendarController;
   late final ProfileRepository _profileRepository;
   late final Timer _clock;
@@ -90,14 +91,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadRemote() async {
-    if (!_roomsController.online) return;
+    if (!mounted || _loadingRemote || !_roomsController.online) return;
+    _loadingRemote = true;
     try {
       await _roomsController.refresh();
+      if (!mounted) return;
       await _calendarController.refreshRemote();
     } on PlanitApiException catch (e) {
       if (mounted) _showMessage(e.message);
     } catch (_) {
       if (mounted) _showMessage('서버 데이터를 불러오지 못했습니다. 다시 시도해 주세요.');
+    } finally {
+      _loadingRemote = false;
     }
   }
 
