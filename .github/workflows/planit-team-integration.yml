@@ -72,11 +72,7 @@ jobs:
             adb shell am start -W -n com.example.meetsync/.MainActivity
             sleep 12
             adb shell pidof com.example.meetsync
-            for i in $(seq 1 15); do
-              adb shell input swipe 230 690 230 130 70
-              adb shell input swipe 230 150 230 690 70
-              adb shell input tap 200 650
-            done
+            for i in $(seq 1 15); do adb shell input swipe 230 690 230 130 70; adb shell input swipe 230 150 230 690 70; adb shell input tap 200 650; done
             adb shell pidof com.example.meetsync
             if adb logcat -d -b crash | grep -A 15 "FATAL EXCEPTION" | grep -q "com.example.meetsync"; then
               echo "App crashed during emulator interaction"
