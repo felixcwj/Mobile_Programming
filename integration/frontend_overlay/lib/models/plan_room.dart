@@ -87,7 +87,7 @@ class PlanRoom {
     date: clearDate ? null : date ?? this.date,
     end: clearDate ? null : end ?? this.end,
     recommendationSource: recommendationSource,
-    region: region;
+    region: region,
     inviteCode: inviteCode,
     members: members ?? this.members,
     status: status ?? this.status,
