@@ -59,4 +59,4 @@ if ! curl -fsS --max-time 2 http://127.0.0.1:8000/health >/dev/null; then
 fi
 echo "Copy the temporary HTTPS URL printed below to 팀 서버 연결 on every device."
 echo "Keep this terminal running. Only use disposable classroom accounts."
-exec cloudflared tunnel --url http://127.0.0.1:8000
+cloudflared tunnel --url http://127.0.0.1:8000

@@ -98,3 +98,11 @@ use personal data or share server credentials with the tunnel users.
 
 After receiving a paid OpenAI-compatible API key, set AI_API_KEY, AI_MODEL
 and AI_API_BASE_URL on the server. The Android APK does not change.
+
+## Preconfigured team release APK
+
+The release APK defaults to `https://planit-team-backend.vercel.app`.
+Once the backend's private Firebase Admin JSON and Kakao REST key are configured
+on the Vercel project and deployment is healthy, teammates only need to install
+and sign up. They do **not** need to type the server address manually.
+The **팀 서버 연결** button remains available for temporary LAN/tunnel testing.
