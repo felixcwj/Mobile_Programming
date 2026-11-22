@@ -41,7 +41,7 @@ class AiResultScreen extends StatelessWidget {
       final confirmed = controller.online
           ? await controller.confirmRemote(roomId)
           : controller.confirm(roomId);
-      if (confirmed) {
+      if (confirmed && context.mounted) {
         onConfirmed?.call(controller.room(roomId));
         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('약속이 서버에 저장되었습니다.')));
@@ -181,10 +181,18 @@ class AiResultScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                   RoomAction(
-                    label: confirmed ? '확정된 약속이에요' : '이 코스로 약속 확정',
+                    label: confirmed
+                        ? '확정된 약속이에요'
+                        : !controller.canConfirm(roomId)
+                            ? '방장이 약속을 확정할 수 있어요'
+                            : controller.isConfirming(roomId)
+                                ? '약속 확정 중…'
+                                : '이 코스로 약속 확정',
                     icon: Icons.check,
                     onPressed:
                         !confirmed &&
+                            controller.canConfirm(roomId) &&
+                            !controller.isConfirming(roomId) &&
                             room.allSubmitted &&
                             room.course.isNotEmpty
                         ? () => _confirm(context)

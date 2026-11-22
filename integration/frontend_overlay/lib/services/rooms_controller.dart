@@ -11,6 +11,10 @@ class RoomsController extends ChangeNotifier {
   final PlanitApi? api;
   bool get online => api != null;
   final Map<String, String> _revisions = {};
+  final Map<String, String> _roomOwners = {};
+  final Set<String> _confirming = {};
+  bool canConfirm(String id) => !online || _roomOwners[id] == FirebaseAuth.instance.currentUser?.uid;
+  bool isConfirming(String id) => _confirming.contains(id);
   int _refreshGeneration = 0;
   bool _disposed = false;
 
@@ -171,6 +175,7 @@ class RoomsController extends ChangeNotifier {
     if (service == null || _disposed) return;
     final generation = ++_refreshGeneration;
     final revisions = <String, String>{};
+    final owners = <String, String>{};
     final list = await service.listRooms();
     final appointments = await service.request('GET', '/calendar/room-appointments');
     final dates = <String, DateTime>{};
@@ -191,6 +196,7 @@ class RoomsController extends ChangeNotifier {
       if (id.isEmpty) continue;
       try {
         final detail = await service.getRoom(id);
+        owners[id] = (detail['owner_uid'] ?? '').toString();
         final members = <RoomMember>[];
         for (final raw in detail['members'] as List? ?? []) {
           if (raw is! Map) continue;
@@ -254,6 +260,7 @@ class RoomsController extends ChangeNotifier {
     }
     if (_disposed || generation != _refreshGeneration) return;
     _revisions..clear()..addAll(revisions);
+    _roomOwners..clear()..addAll(owners);
     _rooms..clear()..addAll(restored);
     notifyListeners();
   }
@@ -335,15 +342,26 @@ class RoomsController extends ChangeNotifier {
   Future<bool> confirmRemote(String roomId) async {
     final service = api;
     if (service == null) throw StateError('API not configured.');
+    if (_confirming.contains(roomId)) return false;
+    if (!canConfirm(roomId)) {
+      throw const PlanitApiException('약속 확정은 방장만 할 수 있습니다.');
+    }
     final revision = _revisions[roomId];
     if (revision == null || revision.isEmpty) {
       throw const PlanitApiException('최신 AI 추천을 먼저 불러와 주세요.');
     }
-    await service.request('POST',
-        '/rooms/${Uri.encodeComponent(roomId)}/appointment/confirm',
-        body: {'recommendation_revision': revision});
-    await refresh();
-    return true;
+    _confirming.add(roomId);
+    if (!_disposed) notifyListeners();
+    try {
+      await service.request('POST',
+          '/rooms/${Uri.encodeComponent(roomId)}/appointment/confirm',
+          body: {'recommendation_revision': revision});
+      await refresh();
+      return true;
+    } finally {
+      _confirming.remove(roomId);
+      if (!_disposed) notifyListeners();
+    }
   }
 
   @override
