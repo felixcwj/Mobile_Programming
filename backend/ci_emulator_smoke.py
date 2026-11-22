@@ -147,6 +147,61 @@ def main():
             submitted = check(client.get(f"/rooms/{room_id}/preferences", headers=a))
             assert submitted["submitted_count"] == 2
 
+            # Exercise the real recommendation/confirmation API and Firestore
+            # writes, replacing only paid external Kakao/OpenRouter responses.
+            async def fixture_meeting_area(conditions):
+                return {
+                    "name": "서울", "latitude": 37.566,
+                    "longitude": 126.978, "method": "emulator_fixture",
+                }
+
+            async def fixture_candidates(conditions):
+                return [{
+                    "place_id": "kakao-fixture-1",
+                    "name": "검증된 테스트 카페",
+                    "category": "음식점 > 카페",
+                    "address": "서울특별시 종로구",
+                    "latitude": 37.566, "longitude": 126.978,
+                    "place_url": "https://place.map.kakao.com/1",
+                }]
+
+            async def fixture_course(conditions, candidates):
+                plan = backend.VerifiedCoursePlan.model_validate({
+                    "title": "테스트 서울 코스",
+                    "date": conditions["date"],
+                    "summary": "테스트 약속",
+                    "stops": [{
+                        "place_id": candidates[0]["place_id"],
+                        "activity": "카페",
+                        "start_time": "13:00", "end_time": "14:00",
+                        "estimated_cost": 15000,
+                    }],
+                })
+                return backend._check_and_enrich(plan, conditions, candidates)
+
+            backend._select_meeting_area = fixture_meeting_area
+            backend._candidate_places = fixture_candidates
+            backend._openrouter_course = fixture_course
+
+            rec = check(client.post(f"/rooms/{room_id}/recommend", headers=a))
+            revision = rec["source_revision"]
+            assert rec["plan"]["stops"][0]["place_id"] == "kakao-fixture-1"
+            assert check(client.get(
+                f"/rooms/{room_id}/recommendation", headers=b
+            ))["source_revision"] == revision
+            check(client.post(f"/rooms/{room_id}/appointment/confirm",
+                              headers=b,
+                              json={"recommendation_revision": revision}), 403)
+            confirmed = check(client.post(
+                f"/rooms/{room_id}/appointment/confirm", headers=a,
+                json={"recommendation_revision": revision}))
+            assert confirmed["appointment"]["version"] == 1
+            for header in (a, b):
+                events = check(client.get("/calendar/room-appointments",
+                                          headers=header))["events"]
+                assert any(event["room_id"] == room_id and
+                           event["status"] == "confirmed" for event in events)
+
             event_payload = {
                 "title": "개인 일정 테스트",
                 "starts_at": start.isoformat(),
@@ -184,8 +239,8 @@ def main():
             }))
             assert any(r["room_id"] == room_id for r in restored["rooms"])
             print("PASS: Firebase Auth/Firestore emulator, signup/login, "
-                  "profiles, regions, room join, shared appointments, "
-                  "personal calendar CRUD and account data restoration")
+                  "profiles, regions, room join, AI recommendation fixture, "
+                  "confirmation, shared appointments, personal calendar CRUD and account data restoration")
     finally:
         credential.unlink(missing_ok=True)
 
