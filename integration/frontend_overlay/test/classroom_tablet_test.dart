@@ -56,7 +56,7 @@ void main() {
     await tester.tap(find.byTooltip('캘린더'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    await tester.pageBack();
+    await tester.tap(find.byTooltip('홈으로 돌아가기'));
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(tester.takeException(), isNull);
