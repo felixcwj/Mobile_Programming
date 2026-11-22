@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The evaluation tablet and team phones use the same APK.  No server address
@@ -22,8 +23,11 @@ class PlanitServerConfig {
       return false;
     }
     if (uri.scheme == 'https') return true;
-    // Plain HTTP is allowed only to developer-owned loopback or private-LAN
-    // services. Release Android blocks cleartext; HTTPS works on all devices.
+    // Android release builds block cleartext traffic. Do not offer a LAN HTTP
+    // setting that the operating system will reject, or transmit credentials
+    // unencrypted on classroom Wi-Fi. Use the HTTPS tunnel for release APKs.
+    if (kReleaseMode) return false;
+    // Plain HTTP is for debug builds talking to a private development host.
     final host = uri.host.toLowerCase();
     if (host == 'localhost' || host == '127.0.0.1' ||
         host == '10.0.2.2') return true;
@@ -46,7 +50,7 @@ class PlanitServerConfig {
   static Future<void> save(String value) async {
     final normalized = value.trim().replaceFirst(RegExp(r'/+$'), '');
     if (!isValid(normalized)) {
-      throw const FormatException('HTTPS 서버 주소 또는 내부망 IP 주소를 입력해 주세요.');
+      throw const FormatException('HTTPS 서버 주소를 입력해 주세요. 내부망 HTTP는 개발용 디버그 앱에서만 지원합니다.');
     }
     final prefs = await SharedPreferences.getInstance();
     if (!await prefs.setString(storageKey, normalized)) {
