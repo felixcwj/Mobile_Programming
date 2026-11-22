@@ -11,6 +11,8 @@ class RoomsController extends ChangeNotifier {
   final PlanitApi? api;
   bool get online => api != null;
   final Map<String, String> _revisions = {};
+  int _refreshGeneration = 0;
+  bool _disposed = false;
 
 
   factory RoomsController.demo() {
@@ -166,7 +168,9 @@ class RoomsController extends ChangeNotifier {
   /// Recover authoritative shared rooms and appointments after every login.
   Future<void> refresh() async {
     final service = api;
-    if (service == null) return;
+    if (service == null || _disposed) return;
+    final generation = ++_refreshGeneration;
+    final revisions = <String, String>{};
     final list = await service.listRooms();
     final appointments = await service.request('GET', '/calendar/room-appointments');
     final dates = <String, DateTime>{};
@@ -224,7 +228,7 @@ class RoomsController extends ChangeNotifier {
                 ));
               }
               final revision = recommendation['source_revision'];
-              if (revision is String) _revisions[id] = revision;
+              if (revision is String) revisions[id] = revision;
               if (stops.isNotEmpty && roomStatus != RoomStatus.confirmed) {
                 roomStatus = RoomStatus.recommended;
               }
@@ -248,6 +252,8 @@ class RoomsController extends ChangeNotifier {
         rethrow;
       }
     }
+    if (_disposed || generation != _refreshGeneration) return;
+    _revisions..clear()..addAll(revisions);
     _rooms..clear()..addAll(restored);
     notifyListeners();
   }
@@ -340,4 +346,10 @@ class RoomsController extends ChangeNotifier {
     return true;
   }
 
+  @override
+  void dispose() {
+    _disposed = true;
+    _refreshGeneration++;
+    super.dispose();
+  }
 }
