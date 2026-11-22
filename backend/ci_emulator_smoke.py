@@ -82,7 +82,7 @@ def main():
             assert check(client.get("/health"))["status"] == "ok"
             users = [
                 ("ci_alice", "alice@example.com", "앨리스"),
-                ("ci_bob", "bob@example.com", "밥"),
+                ("ci_bob", "bob@example.com", "밥님"),
             ]
             auth_headers = []
             for login_id, email, nickname in users:
