@@ -228,13 +228,33 @@ class CalendarController extends ChangeNotifier {
       throw ArgumentError('Invalid calendar event.');
     }
     final version = _remoteVersions[event.id];
+    final Map<String, dynamic> saved;
     if (version == null) {
-      await service.request('POST', '/calendar/events', body: _encodeEvent(event));
+      saved = await service.request('POST', '/calendar/events',
+          body: _encodeEvent(event));
     } else {
-      await service.request('PUT', '/calendar/events/${Uri.encodeComponent(event.id)}',
+      saved = await service.request('PUT',
+          '/calendar/events/${Uri.encodeComponent(event.id)}',
           body: {..._encodeEvent(event), 'version': version});
     }
-    await refreshRemote();
+    final updated = _decodeEvent(saved);
+    if (updated == null || updated.id.isEmpty) {
+      throw const PlanitApiException('서버에 저장했지만 일정 정보를 해석하지 못했습니다. 목록을 새로고침해 주세요.');
+    }
+    if (_disposed) return;
+    _refreshGeneration++;
+    _personalEvents.remove(event.id);
+    _remoteVersions.remove(event.id);
+    _personalEvents[updated.id] = updated;
+    _remoteVersions[updated.id] = (saved['version'] as num?)?.toInt() ?? 1;
+    notifyListeners();
+    // A following read failure must not make the user repeat a successful
+    // save and accidentally create a duplicate event.
+    try {
+      await refreshRemote();
+    } on PlanitApiException {
+      // Preserve the authoritative event returned by the successful write.
+    }
   }
 
   Future<void> deleteRemote(String id) async {
@@ -245,9 +265,20 @@ class CalendarController extends ChangeNotifier {
     }
     final version = _remoteVersions[id];
     if (version == null) throw const PlanitApiException('일정을 찾을 수 없습니다.');
-    await service.request('DELETE', '/calendar/events/${Uri.encodeComponent(id)}',
+    await service.request('DELETE',
+        '/calendar/events/${Uri.encodeComponent(id)}',
         query: {'version': '$version'});
-    await refreshRemote();
+    if (_disposed) return;
+    _refreshGeneration++;
+    _personalEvents.remove(id);
+    _remoteVersions.remove(id);
+    if (_ddayEventId == id) _ddayEventId = null;
+    notifyListeners();
+    try {
+      await refreshRemote();
+    } on PlanitApiException {
+      // The deletion has already succeeded on the server.
+    }
   }
 
 }
