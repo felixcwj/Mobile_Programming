@@ -181,6 +181,8 @@ class RoomsController extends ChangeNotifier {
     final list = await service.listRooms();
     final appointments = await service.request('GET', '/calendar/room-appointments');
     final dates = <String, DateTime>{};
+    final ends = <String, DateTime>{};
+    final locations = <String, String>{};
     final statusByRoom = <String, String>{};
     for (final raw in appointments['events'] as List? ?? []) {
       if (raw is! Map) continue;
@@ -188,6 +190,9 @@ class RoomsController extends ChangeNotifier {
       final dt = DateTime.tryParse(raw['starts_at']?.toString() ?? '')?.toLocal();
       if (id != null && dt != null) {
         dates[id] = dt;
+        final end = DateTime.tryParse(raw['ends_at']?.toString() ?? '')?.toLocal();
+        if (end != null && end.isAfter(dt)) ends[id] = end;
+        locations[id] = (raw['location'] ?? '').toString();
         statusByRoom[id] = raw['status']?.toString() ?? 'scheduled';
       }
     }
@@ -249,7 +254,10 @@ class RoomsController extends ChangeNotifier {
           id: id,
           title: (detail['title'] ?? '새 약속방').toString(),
           date: dates[id],
-          region: (myPrefs is Map ? myPrefs['region'] : null)?.toString() ?? '지역 미정',
+          end: ends[id],
+          region: statusByRoom[id] == 'confirmed' && (locations[id]?.isNotEmpty ?? false)
+              ? locations[id]!
+              : (myPrefs is Map ? myPrefs['region'] : null)?.toString() ?? '지역 미정',
           inviteCode: (detail['invite_code'] ?? '').toString(),
           members: members,
           capacity: (detail['max_members'] as num?)?.toInt() ?? 8,

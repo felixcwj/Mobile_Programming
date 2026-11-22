@@ -88,8 +88,10 @@ class CalendarController extends ChangeNotifier {
           roomId: room.id,
           title: room.title,
           start: room.date!,
-          // Rooms currently have only a start time; do not invent a duration.
-          end: room.date!.add(const Duration(microseconds: 1)),
+          // Confirmed rooms use the server-provided end time. For an
+          // unconfirmed room, render the scheduled start as a point event.
+          end: room.end != null && room.end!.isAfter(room.date!)
+              ? room.end! : room.date!.add(const Duration(microseconds: 1)),
           category: room.category,
           location: room.region == '지역 미정' ? '' : room.region,
           notes: room.status.label,
