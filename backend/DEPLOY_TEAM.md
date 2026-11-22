@@ -71,3 +71,30 @@ evaluation**, never into a mobile build.
 CI's Firebase emulator suite verifies API behavior, but does not replace a
 live external API test. The Android UI stress smoke checks startup and
 taps/swipes only; it is not a two-device full UI test.
+
+## No-cost classroom practice and temporary HTTPS sharing
+
+Until the $10 paid key arrives, the backend can assemble a provisional
+recommendation from verified Kakao place IDs and shared preferences.
+This is explicitly **not an AI-generated route**; actual operating hours,
+route times and prices are unknown. A free model HTTP 429 uses the same
+fallback unless ENABLE_KAKAO_FALLBACK=0.
+
+To run a common backend on the same Wi-Fi, on a trusted Mac with the existing
+Firebase service-account file and backend/.env Kakao key, run:
+
+    bash backend/start_classroom.sh
+
+Use its private-LAN IP in the debug APK's **팀 서버 연결**.
+
+For devices on different networks, install cloudflared once with
+`brew install cloudflared`, and run:
+
+    bash backend/start_classroom.sh --tunnel
+
+The printed HTTPS trycloudflare.com URL works in the release APK.
+This free temporary URL changes each time you restart the tunnel. Never
+use personal data or share server credentials with the tunnel users.
+
+After receiving a paid OpenAI-compatible API key, set AI_API_KEY, AI_MODEL
+and AI_API_BASE_URL on the server. The Android APK does not change.

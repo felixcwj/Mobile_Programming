@@ -753,3 +753,50 @@ def test_room_preferences_reject_invalid_budget_time_and_activity(app_module):
     ):
         with pytest.raises(ValueError):
             app_module.RoomPreferenceRequest(**{**valid, **changes})
+
+
+def test_rule_based_course_uses_only_verified_places_without_paid_ai(app_module, monkeypatch):
+    import asyncio
+
+    module = app_module
+    monkeypatch.setattr(module, "OPENROUTER_API_KEY", "")
+    conditions = {
+        "date": "2026-12-01",
+        "start_time": "13:00",
+        "end_time": "16:00",
+        "budget_per_person": 30000,
+        "meeting_area": {"latitude": 37.56, "longitude": 127.0, "name": "서울"},
+        "preferences": [
+            {"activities": ["카페", "산책"], "additional_notes": ""},
+            {"activities": ["카페"], "additional_notes": ""},
+        ],
+        "shared_decisions": [],
+    }
+    candidates = [
+        {
+            "place_id": "real-kakao-cafe-id", "name": "테스트 카페",
+            "category": "음식점 > 카페", "address": "서울 중구",
+            "latitude": 37.5601, "longitude": 127.0001,
+        },
+        {
+            "place_id": "real-kakao-park-id", "name": "테스트 공원",
+            "category": "관광명소 > 공원", "address": "서울 중구",
+            "latitude": 37.562, "longitude": 127.003,
+        },
+    ]
+    result = asyncio.run(module._openrouter_course(conditions, candidates))
+    assert result["recommendation_source"] == "kakao_verified_rule_based"
+    assert set(stop["place_id"] for stop in result["stops"]) <= {
+        p["place_id"] for p in candidates
+    }
+    assert result["stops"][0]["place_id"] == "real-kakao-cafe-id"
+    assert result["total_estimated_cost"] <= 30000
+    assert "AI 호출 없이" in result["notes"]
+    assert "실제 영업시간" in result["notes"]
+
+    modified = {**conditions, "shared_decisions": [{
+        "change_type": "add", "to_activity": "볼링",
+    }]}
+    with pytest.raises(module.HTTPException) as exc:
+        module._verified_kakao_fallback(modified, candidates)
+    assert exc.value.status_code == 422

@@ -106,6 +106,8 @@ jobs:
       - name: Install backend test dependencies
         working-directory: backend
         run: python -m pip install -r requirements.txt pytest
+      - name: Validate classroom launcher shell syntax
+        run: bash -n backend/start_classroom.sh
       - name: Run backend tests with fake Firebase
         working-directory: backend
         run: python -m pytest -q
