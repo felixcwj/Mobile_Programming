@@ -81,8 +81,8 @@ def main():
         with TestClient(backend.app) as client:
             assert check(client.get("/health"))["status"] == "ok"
             users = [
-                ("ci_alice", "alice@planit-ci.invalid", "앨리스"),
-                ("ci_bob", "bob@planit-ci.invalid", "밥"),
+                ("ci_alice", "alice@example.com", "앨리스"),
+                ("ci_bob", "bob@example.com", "밥"),
             ]
             auth_headers = []
             for login_id, email, nickname in users:
