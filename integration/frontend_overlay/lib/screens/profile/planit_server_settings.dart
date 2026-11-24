@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../l10n/planit_l10n.dart';
 import '../../services/planit_api.dart';
 import '../../services/planit_server_config.dart';
 
 /// Only a backend URL is entered here; API keys remain in server secrets.
-Future<void> showPlanitServerSettings(BuildContext context) =>
-    showDialog<void>(
-      context: context,
-      builder: (_) => const _PlanitServerSettingsDialog(),
-    );
+Future<void> showPlanitServerSettings(BuildContext context) => showDialog<void>(
+  context: context,
+  builder: (_) => const _PlanitServerSettingsDialog(),
+);
 
 class _PlanitServerSettingsDialog extends StatefulWidget {
   const _PlanitServerSettingsDialog();
@@ -41,30 +41,37 @@ class _PlanitServerSettingsDialogState
     if (_checking) return;
     final address = _controller.text.trim();
     if (!PlanitServerConfig.isValid(address)) {
-      setState(() => _status = 'HTTPS 주소 또는 내부망 IP 주소를 확인해 주세요.');
+      setState(
+        () => _status = l10n(context).checkTheHttpsAddressOrLocalNetwork,
+      );
       return;
     }
     setState(() {
       _checking = true;
-      _status = '서버 연결 확인 중…';
+      _status = l10n(context).checkingServerConnection;
     });
     try {
-      final result = await PlanitApi(baseUrlOverride: address)
-          .request('GET', '/health', authenticated: false);
+      final result = await PlanitApi(
+        baseUrlOverride: address,
+      ).request('GET', '/health', authenticated: false);
       if (result['status'] != 'ok') {
         throw const PlanitApiException('서버 상태가 정상이 아닙니다.');
       }
       await PlanitServerConfig.save(address);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('팀 서버 연결을 확인하고 주소를 저장했습니다.'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n(context).serverConnectionVerifiedAndAddressSaved),
+        ),
+      );
       Navigator.of(context).pop();
     } catch (error) {
       if (mounted) {
-        setState(() => _status = error is PlanitApiException
-            ? error.message
-            : '서버 연결에 실패했습니다. 주소와 Wi-Fi 연결을 확인해 주세요.');
+        setState(
+          () => _status = error is PlanitApiException
+              ? displayError(context, error)
+              : l10n(context).couldNotConnectCheckTheServerAddress,
+        );
       }
     } finally {
       if (mounted) setState(() => _checking = false);
@@ -73,29 +80,28 @@ class _PlanitServerSettingsDialogState
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('팀 서버 연결'),
+    title: Text(l10n(context).teamServer),
     scrollable: true,
     content: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('모든 팀원이 같은 서버 주소를 입력해야 방과 일정이 공유됩니다.'),
+        Text(l10n(context).teamMembersMustUseTheSameServer),
         const SizedBox(height: 16),
         TextField(
           key: const ValueKey('planit-server-url'),
           controller: _controller,
           autocorrect: false,
           keyboardType: TextInputType.url,
-          decoration: const InputDecoration(
-            labelText: '서버 주소',
+          decoration: InputDecoration(
+            labelText: l10n(context).serverAddress,
             hintText: 'https://planit-team.example.com',
             border: OutlineInputBorder(),
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
-          '실제 태블릿은 10.0.2.2를 사용할 수 없습니다. '
-          '공용 HTTPS 서버를 사용하세요. 같은 Wi-Fi 테스트는 개발용 앱에서 내부 IP로 연결할 수 있습니다.',
+        Text(
+          l10n(context).onAPhysicalTabletUseAPublic,
           style: TextStyle(fontSize: 12),
         ),
         if (_status != null)
@@ -108,11 +114,11 @@ class _PlanitServerSettingsDialogState
     actions: [
       TextButton(
         onPressed: _checking ? null : () => Navigator.of(context).pop(),
-        child: const Text('취소'),
+        child: Text(l10n(context).cancel),
       ),
       FilledButton(
         onPressed: _checking ? null : _checkAndSave,
-        child: const Text('연결 확인 및 저장'),
+        child: Text(l10n(context).verifyAndSave),
       ),
     ],
   );

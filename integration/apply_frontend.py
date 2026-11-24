@@ -1,68 +1,47 @@
 #!/usr/bin/env python3
-"""Apply the integration implementation to the pinned frontend submodule copy.
+"""Apply the tracked integration files to the local frontend submodule."""
 
-The upstream frontend belongs to another teammate. Do not push changes there.
-This script changes only the checked-out local copy. Run after clone --recurse-submodules.
-"""
 from pathlib import Path
 import shutil
 
 root = Path(__file__).resolve().parents[1]
 frontend = root / "frontend"
-if not (frontend / "pubspec.yaml").exists():
+overlay = root / "integration" / "frontend_overlay"
+pubspec = frontend / "pubspec.yaml"
+
+if not pubspec.is_file():
     raise SystemExit("Missing frontend submodule. Run: git submodule update --init --recursive")
-for src in (root / "integration" / "frontend_overlay").rglob("*.dart"):
-    dest = frontend / src.relative_to(root / "integration" / "frontend_overlay")
+
+
+def add_after(content, anchor, addition):
+    if addition in content:
+        return content
+    if content.count(anchor) != 1:
+        raise SystemExit(f"Patch mismatch: pubspec.yaml: {anchor!r}")
+    return content.replace(anchor, anchor + addition, 1)
+
+
+original = pubspec.read_text(encoding="utf-8")
+content = original
+anchor = "  firebase_auth: 5.7.0\n"
+for dependency in reversed((
+    "  http: ^1.5.0\n",
+    "  shared_preferences: ^2.5.3\n",
+    "  flutter_localizations:\n    sdk: flutter\n",
+    "  intl: any\n",
+)):
+    content = add_after(content, anchor, dependency)
+content = add_after(content, "\nflutter:\n", "  generate: true\n")
+if content != original:
+    pubspec.write_text(content, encoding="utf-8", newline="\n")
+
+for src in sorted(overlay.rglob("*")):
+    if not src.is_file():
+        continue
+    dest = frontend / src.relative_to(overlay)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dest)
-    print("overlay", dest.relative_to(frontend))
+    if not dest.is_file() or src.read_bytes() != dest.read_bytes():
+        shutil.copyfile(src, dest)
+        print("overlay", dest.relative_to(frontend))
 
-def replace(path, old, new):
-    p = frontend / path
-    content = p.read_text()
-    if old not in content:
-        raise SystemExit(f"Patch mismatch: {path}: {old[:80]!r}")
-    p.write_text(content.replace(old, new))
-
-replace("pubspec.yaml", "  firebase_auth: 5.7.0\n", "  firebase_auth: 5.7.0\n  http: ^1.5.0\n  shared_preferences: ^2.5.3\n")
-replace("lib/screens/signup_screen.dart",
-        r"RegExp(r'^[a-zA-Z0-9]{4,20}$')",
-        r"RegExp(r'^[a-zA-Z0-9_]{4,12}$')")
-replace("lib/screens/signup_screen.dart",
-        "hint: '영문 및 숫자 4~20자',",
-        "hint: '영문·숫자·밑줄 4~12자',")
-replace("lib/screens/signup_screen.dart",
-        "'영문 및 숫자 4~20자로 입력해 주세요.'",
-        "'영문·숫자·밑줄 4~12자로 입력해 주세요.'")
-replace("lib/screens/profile/account_edit_screen.dart",
-        "maxLength: widget.editPassword ? 128 : 30,",
-        "maxLength: widget.editPassword ? 20 : 12,")
-replace("lib/screens/profile/account_edit_screen.dart",
-        "r'^[a-zA-Z0-9_]{4,30}$'",
-        "r'^[a-zA-Z0-9_]{4,12}$'")
-replace("lib/screens/profile/account_edit_screen.dart",
-        "'영문, 숫자, 밑줄로 4~30자 입력해 주세요.'",
-        "'영문, 숫자, 밑줄로 4~12자 입력해 주세요.'")
-replace("lib/screens/login_screen.dart",
-        "import '../services/firebase_accounts.dart';",
-        "import '../services/firebase_accounts.dart';\nimport 'profile/planit_server_settings.dart';")
-replace("lib/screens/login_screen.dart",
-        "      backgroundColor: const Color(0xFFF0F5F9),\n      body: SafeArea(",
-        "      backgroundColor: const Color(0xFFF0F5F9),\n      floatingActionButton: FloatingActionButton.extended(\n        onPressed: () => showPlanitServerSettings(context),\n        icon: const Icon(Icons.settings_ethernet),\n        label: const Text('팀 서버 연결'),\n      ),\n      body: SafeArea(")
-replace("lib/main.dart",
-        "import 'services/firebase_accounts.dart';",
-        "import 'services/firebase_accounts.dart';\nimport 'services/planit_server_config.dart';")
-replace("lib/main.dart",
-        "  // Firebase 초기화",
-        "  await PlanitServerConfig.load();\n\n  // Firebase 초기화")
-
-print("Frontend integration patch applied; run flutter pub get and flutter analyze.")
-
-# HTTP is permitted on the Android emulator only in the debug flavor.
-# Release builds retain the platform default (HTTPS required).
-debug_manifest = frontend / "android/app/src/debug/AndroidManifest.xml"
-debug_manifest.write_text("""<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <uses-permission android:name="android.permission.INTERNET" />
-  <application android:usesCleartextTraffic="true" />
-</manifest>
-""")
+print("Frontend overlay applied. Run flutter pub get and flutter gen-l10n in frontend.")

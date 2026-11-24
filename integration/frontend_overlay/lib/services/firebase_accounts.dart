@@ -36,7 +36,7 @@ class FirebaseAccounts {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
       return FirebaseProfileRepository(_api);
     } on PlanitApiException catch (e) {
-      throw AccountException(e.message);
+      throw AccountException(e.message, isServerMessage: e.isServerMessage);
     } on FirebaseAuthException {
       throw const AccountException('계정은 생성되었지만 자동 로그인에 실패했습니다. 로그인 화면에서 다시 시도해 주세요.');
     }
@@ -58,7 +58,7 @@ class FirebaseAccounts {
       }
       return FirebaseProfileRepository(_api);
     } on PlanitApiException catch (e) {
-      throw AccountException(e.message);
+      throw AccountException(e.message, isServerMessage: e.isServerMessage);
     } on FirebaseAuthException {
       throw const AccountException('로그인하지 못했습니다. 아이디와 비밀번호를 확인해 주세요.');
     }
@@ -68,7 +68,8 @@ class FirebaseAccounts {
 }
 
 class AccountException implements Exception {
-  const AccountException(this.message);
+  const AccountException(this.message, {this.isServerMessage = false});
+  final bool isServerMessage;
   final String message;
   @override
   String toString() => message;
@@ -167,7 +168,7 @@ class FirebaseProfileRepository implements ProfileRepository {
       await _api.request('PUT', '/mypage/id',
         body: {'password': password, 'new_id': newId.trim()});
     } on PlanitApiException catch (e) {
-      throw AccountException(e.message);
+      throw AccountException(e.message, isServerMessage: e.isServerMessage);
     }
   }
 
@@ -184,7 +185,7 @@ class FirebaseProfileRepository implements ProfileRepository {
             email: email, password: newPassword);
       }
     } on PlanitApiException catch (e) {
-      throw AccountException(e.message);
+      throw AccountException(e.message, isServerMessage: e.isServerMessage);
     } on FirebaseAuthException {
       throw const AccountException('비밀번호가 변경됐습니다. 보안을 위해 다시 로그인해 주세요.');
     }

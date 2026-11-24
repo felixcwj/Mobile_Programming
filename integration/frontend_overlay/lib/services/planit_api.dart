@@ -2,17 +2,28 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'planit_server_config.dart';
 
 /// All application data is authoritative on FastAPI/Firebase.
 class PlanitApi {
-  PlanitApi({http.Client? client, String? baseUrlOverride})
+  PlanitApi({http.Client? client, String? baseUrlOverride, Future<String?> Function()? authToken})
       : _baseUrlOverride = baseUrlOverride,
-        _client = client ?? http.Client();
+        _client = client ?? http.Client(),
+        _authToken = authToken ?? _firebaseToken;
 
   static const baseUrl = String.fromEnvironment('PLANIT_API_BASE_URL');
   final http.Client _client;
+  final Future<String?> Function() _authToken;
+  String? get currentUserId => FirebaseAuth.instance.currentUser?.uid;
+
+  static Future<String?> _firebaseToken() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw const PlanitApiException('로그인이 필요합니다.');
+    return user.getIdToken();
+  }
+
   final String? _baseUrlOverride;
   String get _baseUrl => _baseUrlOverride ?? PlanitServerConfig.url;
 
@@ -38,18 +49,30 @@ class PlanitApi {
     bool authenticated = true,
     Duration timeout = const Duration(seconds: 45),
   }) async {
-    final headers = <String, String>{'Content-Type': 'application/json'};
-    if (authenticated) {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw const PlanitApiException('로그인이 필요합니다.');
-      final token = await user.getIdToken();
-      if (token == null) throw const PlanitApiException('인증 토큰을 가져오지 못했습니다.');
-      headers['Authorization'] = 'Bearer $token';
-    }
-    http.Response response;
+    final endpoint = path == '/rooms'
+        ? '/rooms'
+        : path.startsWith('/rooms/') && path.endsWith('/schedule')
+        ? '/rooms/:id/schedule'
+        : null;
+    final watch = Stopwatch()..start();
+    if (endpoint != null) logRoomCreation('$method $endpoint started');
+    var sent = false;
+    int? statusCode;
+    late final http.Response response;
     try {
       final url = _url(path, query);
-      final payload = body == null ? null : jsonEncode(body);
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      if (authenticated) {
+        final token = await _authToken().timeout(timeout);
+        if (token == null) {
+          throw const PlanitApiException('인증 토큰을 가져오지 못했습니다.');
+        }
+        headers['Authorization'] = 'Bearer $token';
+      }
+      final payload = body == null ? null : utf8.encode(jsonEncode(body));
+      final remaining = timeout - watch.elapsed;
+      if (remaining <= Duration.zero) throw TimeoutException('Request deadline');
+      sent = true;
       response = await (switch (method) {
         'GET' => _client.get(url, headers: headers),
         'POST' => _client.post(url, headers: headers, body: payload),
@@ -57,30 +80,57 @@ class PlanitApi {
         'PATCH' => _client.patch(url, headers: headers, body: payload),
         'DELETE' => _client.delete(url, headers: headers),
         _ => throw ArgumentError.value(method),
-      }).timeout(timeout);
+      }).timeout(remaining);
+      statusCode = response.statusCode;
     } on TimeoutException {
-      throw const PlanitApiException('서버 응답이 지연되고 있습니다. 다시 시도해 주세요.');
+      throw PlanitApiException(
+        '서버 응답이 지연되고 있습니다. 다시 시도해 주세요.',
+        mayHaveReachedServer: sent,
+      );
     } on PlanitApiException {
       rethrow;
     } catch (_) {
-      throw const PlanitApiException('서버에 연결할 수 없습니다. 인터넷과 서버 주소를 확인하세요.');
+      throw PlanitApiException(
+        '서버에 연결할 수 없습니다. 인터넷과 서버 주소를 확인하세요.',
+        mayHaveReachedServer: sent,
+      );
+    } finally {
+      if (endpoint != null) {
+        logRoomCreation(
+          '$method $endpoint finished status=${statusCode ?? 'none'} '
+          'sent=$sent elapsedMs=${watch.elapsedMilliseconds}',
+        );
+      }
     }
     Object? decoded;
     try {
       decoded = jsonDecode(utf8.decode(response.bodyBytes));
     } catch (_) {
-      throw PlanitApiException('서버 응답이 올바르지 않습니다. (HTTP ${response.statusCode})');
+      throw PlanitApiException(
+        '서버 응답이 올바르지 않습니다. (HTTP ${response.statusCode})',
+        statusCode: response.statusCode,
+        mayHaveReachedServer: response.statusCode < 400 ||
+            response.statusCode == 408 || response.statusCode >= 500,
+      );
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final data = decoded is Map ? decoded : const {};
       final detail = data['detail'];
       final message = detail is String
           ? detail
-          : detail is Map ? (detail['message']?.toString() ?? '요청을 처리하지 못했습니다.') : '요청을 처리하지 못했습니다.';
-      throw PlanitApiException(message, statusCode: response.statusCode);
+          : detail is Map ? detail['message']?.toString() : null;
+      throw PlanitApiException(
+        message ?? '요청을 처리하지 못했습니다.',
+        statusCode: response.statusCode,
+        isServerMessage: message != null,
+        mayHaveReachedServer: response.statusCode == 408 || response.statusCode >= 500,
+      );
     }
     if (decoded is! Map<String, dynamic>) {
-      throw const PlanitApiException('서버 데이터 형식이 올바르지 않습니다.');
+      throw const PlanitApiException(
+        '서버 데이터 형식이 올바르지 않습니다.',
+        mayHaveReachedServer: true,
+      );
     }
     return decoded;
   }
@@ -94,8 +144,10 @@ class PlanitApi {
         .whereType<Map<String, dynamic>>().toList();
   }
 
-  Future<Map<String, dynamic>> createRoom(String title, int maxMembers) =>
-      request('POST', '/rooms', body: {'title': title, 'max_members': maxMembers});
+  Future<Map<String, dynamic>> createRoom(String title, int maxMembers,
+          {required Duration timeout}) =>
+      request('POST', '/rooms', timeout: timeout,
+          body: {'title': title, 'max_members': maxMembers});
 
   Future<Map<String, dynamic>> joinRoom(String code) =>
       request('POST', '/rooms/join', body: {'invite_code': code});
@@ -114,9 +166,15 @@ class PlanitApi {
 }
 
 class PlanitApiException implements Exception {
-  const PlanitApiException(this.message, {this.statusCode});
+  const PlanitApiException(this.message, {this.statusCode, this.isServerMessage = false, this.mayHaveReachedServer = false});
+  final bool mayHaveReachedServer;
+  final bool isServerMessage;
   final String message;
   final int? statusCode;
   @override
   String toString() => message;
+}
+
+void logRoomCreation(String message) {
+  if (kDebugMode) debugPrint('[PlanIt rooms] $message');
 }

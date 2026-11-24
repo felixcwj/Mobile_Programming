@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../l10n/planit_l10n.dart';
 
 import '../../services/planit_api.dart';
 import '../../services/rooms_controller.dart';
 
 class RoomConditionsScreen extends StatefulWidget {
-  const RoomConditionsScreen({super.key, required this.controller, required this.roomId,
-    required this.initialDate, required this.initialRegion});
+  const RoomConditionsScreen({
+    super.key,
+    required this.controller,
+    required this.roomId,
+    required this.initialDate,
+    required this.initialRegion,
+  });
   final RoomsController controller;
   final String roomId;
   final DateTime? initialDate;
@@ -44,16 +51,19 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
   Future<void> _pickDate() async {
     final today = DateTime.now();
     final first = DateTime(today.year, today.month, today.day);
-    final chosen = await showDatePicker(context: context,
+    final chosen = await showDatePicker(
+      context: context,
       initialDate: _date.isBefore(first) ? first : _date,
-      firstDate: first, lastDate: DateTime(today.year + 3));
+      firstDate: first,
+      lastDate: DateTime(today.year + 3),
+    );
     if (chosen != null && mounted) setState(() => _date = chosen);
   }
 
   String? _timeValidation(String? value) {
     final v = value?.trim() ?? '';
     if (!RegExp(r'^([01][0-9]|2[0-3]):[0-5][0-9]$').hasMatch(v)) {
-      return '24시간 형식 HH:MM으로 입력하세요.';
+      return l10n(context).useHourTimeHhMm;
     }
     return null;
   }
@@ -62,37 +72,60 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
     if (_saving || !_formKey.currentState!.validate()) return;
     if (_start.text.compareTo(_end.text) >= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('종료 시간은 시작 시간보다 늦어야 합니다.')));
+        SnackBar(content: Text(l10n(context).theEndTimeMustBeAfterThe)),
+      );
       return;
     }
-    final activities = _activities.text.split(',')
-        .map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-    if (activities.isEmpty || activities.length > 10 ||
+    final activities = _activities.text
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (activities.isEmpty ||
+        activities.length > 10 ||
         activities.any((a) => a.length > 40)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('활동을 쉼표로 구분하여 1~10개 입력해 주세요.')));
+        SnackBar(content: Text(l10n(context).enterActivitiesSeparatedByCommas)),
+      );
       return;
     }
     setState(() => _saving = true);
     try {
-      final proposed = await widget.controller.saveConditionsRemote(widget.roomId,
-        region: _region.text.trim(), date: _date,
-        start: _start.text.trim(), end: _end.text.trim(),
-        budget: int.parse(_budget.text), activities: activities,
-        notes: _notes.text.trim());
+      final proposed = await widget.controller.saveConditionsRemote(
+        widget.roomId,
+        region: _region.text.trim(),
+        date: _date,
+        start: _start.text.trim(),
+        end: _end.text.trim(),
+        budget: int.parse(_budget.text),
+        activities: activities,
+        notes: _notes.text.trim(),
+      );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(proposed
-            ? '조건 변경 요청을 보냈습니다. 참여자 동의를 기다립니다.'
-            : '약속 조건이 저장되었습니다.'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            proposed
+                ? l10n(context).changeRequestSentWaitingForMembersTo
+                : l10n(context).planPreferencesSaved,
+          ),
+        ),
+      );
       Navigator.pop(context, true);
     } on PlanitApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('조건을 저장하지 못했습니다. 입력을 확인해 주세요.')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              l10n(context).couldNotSavePreferencesCheckYourEntries,
+            ),
+          ),
+        );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -100,45 +133,101 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('약속 조건 입력')),
-    body: SafeArea(child: Center(child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 600),
-      child: Form(key: _formKey, child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const Text('활동 지역은 대한민국 내 실제 지역이어야 합니다. 저장 전에 카카오 지도로 확인합니다.'),
-          const SizedBox(height: 16),
-          TextFormField(controller: _region, maxLength: 100,
-            decoration: const InputDecoration(labelText: '놀고 싶은 지역', hintText: '예: 성수, 잠실'),
-            validator: (v) => v == null || v.trim().isEmpty ? '지역을 입력해 주세요.' : null),
-          ListTile(title: const Text('약속 날짜'),
-            subtitle: Text('${_date.year}-${_date.month}-${_date.day}'),
-            trailing: const Icon(Icons.calendar_month), onTap: _pickDate),
-          TextFormField(controller: _start,
-            decoration: const InputDecoration(labelText: '시작 시각 (13:00)'),
-            validator: _timeValidation),
-          TextFormField(controller: _end,
-            decoration: const InputDecoration(labelText: '종료 시각 (18:00)'),
-            validator: _timeValidation),
-          TextFormField(controller: _budget, keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: '1인 예산 (원)'),
-            validator: (v) {
-              final n = int.tryParse(v ?? '');
-              return n == null || n < 0 || n > 100000000
-                ? '0~1억 원 사이로 입력해 주세요.' : null;
-            }),
-          TextFormField(controller: _activities, maxLength: 300,
-            decoration: const InputDecoration(labelText: '원하는 활동',
-              hintText: '예: 카페, 전시회, 산책'),
-            validator: (v) => v == null || v.trim().isEmpty
-              ? '활동을 하나 이상 입력해 주세요.' : null),
-          TextFormField(controller: _notes, maxLength: 1000, maxLines: 3,
-            decoration: const InputDecoration(labelText: '기타 사항 (선택)')),
-          const SizedBox(height: 18),
-          FilledButton(onPressed: _saving ? null : _submit,
-            child: Text(_saving ? '지역 확인 및 저장 중…' : '저장하기')),
-        ],
-      )),
-    ))),
+    appBar: AppBar(title: Text(l10n(context).planPreferences)),
+    body: SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Text(l10n(context).chooseARealLocationInSouthKorea),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _region,
+                  maxLength: 100,
+                  maxLengthEnforcement:
+                      MaxLengthEnforcement.truncateAfterCompositionEnds,
+                  decoration: InputDecoration(
+                    labelText: l10n(context).preferredArea,
+                    hintText: l10n(context).eGSeongsuJamsil,
+                  ),
+                  validator: (v) => v == null || v.trim().isEmpty
+                      ? l10n(context).enterAnArea
+                      : null,
+                ),
+                ListTile(
+                  title: Text(l10n(context).planDate),
+                  subtitle: Text(planDateLabel(context, _date, weekday: false)),
+                  trailing: const Icon(Icons.calendar_month),
+                  onTap: _pickDate,
+                ),
+                TextFormField(
+                  controller: _start,
+                  decoration: InputDecoration(
+                    labelText: l10n(context).startTime2,
+                  ),
+                  validator: _timeValidation,
+                ),
+                TextFormField(
+                  controller: _end,
+                  decoration: InputDecoration(
+                    labelText: l10n(context).endTime2,
+                  ),
+                  validator: _timeValidation,
+                ),
+                TextFormField(
+                  controller: _budget,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: l10n(context).budgetPerPersonKrw,
+                  ),
+                  validator: (v) {
+                    final n = int.tryParse(v ?? '');
+                    return n == null || n < 0 || n > 100000000
+                        ? l10n(context).enterAnAmountBetweenAnd
+                        : null;
+                  },
+                ),
+                TextFormField(
+                  controller: _activities,
+                  maxLength: 300,
+                  maxLengthEnforcement:
+                      MaxLengthEnforcement.truncateAfterCompositionEnds,
+                  decoration: InputDecoration(
+                    labelText: l10n(context).preferredActivities,
+                    hintText: l10n(context).eGCafExhibitionWalk,
+                  ),
+                  validator: (v) => v == null || v.trim().isEmpty
+                      ? l10n(context).enterAtLeastOneActivity
+                      : null,
+                ),
+                TextFormField(
+                  controller: _notes,
+                  maxLength: 1000,
+                  maxLengthEnforcement:
+                      MaxLengthEnforcement.truncateAfterCompositionEnds,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: l10n(context).otherDetailsOptional,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: _saving ? null : _submit,
+                  child: Text(
+                    _saving
+                        ? l10n(context).verifyingAreaAndSaving
+                        : l10n(context).save2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
   );
 }

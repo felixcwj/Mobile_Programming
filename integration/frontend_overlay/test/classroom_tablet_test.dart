@@ -8,14 +8,15 @@ import 'package:meetsync/screens/login_screen.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('Android 13 Lenovo 800x1280 login and fast gestures',
-      (tester) async {
+  testWidgets('Android 13 Lenovo 800x1280 login and fast gestures', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(800, 1280);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const MeetSyncApp());
+    await tester.pumpWidget(const MeetSyncApp(initialLocale: Locale('ko')));
     await tester.pumpAndSettle();
     expect(find.byType(LoginScreen), findsOneWidget);
     expect(find.text('팀 서버 연결'), findsOneWidget);
@@ -29,8 +30,7 @@ void main() {
     );
     await tester.tap(find.text('연결 확인 및 저장'));
     await tester.pumpAndSettle();
-    expect(find.text('HTTPS 주소 또는 내부망 IP 주소를 확인해 주세요.'),
-        findsOneWidget);
+    expect(find.text('HTTPS 주소 또는 내부망 IP 주소를 확인해 주세요.'), findsOneWidget);
     await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();
 
@@ -45,7 +45,9 @@ void main() {
     await tester.ensureVisible(find.byKey(const ValueKey('login-id')));
     await tester.enterText(find.byKey(const ValueKey('login-id')), 'lenovo');
     await tester.enterText(
-        find.byKey(const ValueKey('login-password')), 'preview-password');
+      find.byKey(const ValueKey('login-password')),
+      'preview-password',
+    );
     final submit = find.byKey(const ValueKey('login-submit'));
     await tester.ensureVisible(submit);
     await tester.tap(submit);

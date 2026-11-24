@@ -1,11 +1,17 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/calendar_event.dart';
 import '../models/plan_room.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'planit_api.dart';
 
-/// Local preview state. No network, LLM, authentication or calendar persistence.
-/// Create once in the parent and dispose when that parent is disposed.
+typedef RoomCreationResult = ({PlanRoom room, bool scheduleSaved});
+
+class RoomCreationUncertain implements Exception {
+  const RoomCreationUncertain();
+}
+
+/// Room state shared by the home, rooms and calendar screens.
 class RoomsController extends ChangeNotifier {
   RoomsController({required List<PlanRoom> rooms, this.api}) : _rooms = List.of(rooms);
   final PlanitApi? api;
@@ -31,6 +37,10 @@ class RoomsController extends ChangeNotifier {
   bool isConfirming(String id) => _confirming.contains(id);
   int _refreshGeneration = 0;
   bool _disposed = false;
+  bool _creating = false;
+  static const _createTimeout = Duration(seconds: 12);
+  final _uncertainCreations = <(String, int)>{};
+  final _roomCreationChanges = <String, int>{};
 
 
   factory RoomsController.demo() {
@@ -47,6 +57,7 @@ class RoomsController extends ChangeNotifier {
           members: const [
             RoomMember(
               name: '나',
+              isSelf: true,
               submitted: true,
               summary: '조용한 카페 · 전시 · 3만 원',
             ),
@@ -63,7 +74,7 @@ class RoomsController extends ChangeNotifier {
           inviteCode: 'PLAN75',
           status: RoomStatus.recommended,
           members: const [
-            RoomMember(name: '나', submitted: true, summary: '맛집 · 산책 · 3만 원'),
+            RoomMember(name: '나', isSelf: true, submitted: true, summary: '맛집 · 산책 · 3만 원'),
             RoomMember(name: '민수', submitted: true, summary: '카페 · 산책 · 3만 원'),
           ],
           course: const [
@@ -92,7 +103,7 @@ class RoomsController extends ChangeNotifier {
           inviteCode: 'PLAN91',
           status: RoomStatus.confirmed,
           members: const [
-            RoomMember(name: '나', submitted: true, summary: '맛집 · 카페'),
+            RoomMember(name: '나', isSelf: true, submitted: true, summary: '맛집 · 카페'),
             RoomMember(name: '수빈', submitted: true, summary: '산책 · 카페'),
             RoomMember(name: '하준', submitted: true, summary: '맛집 · 산책'),
           ],
@@ -210,7 +221,7 @@ class RoomsController extends ChangeNotifier {
         statusByRoom[id] = raw['status']?.toString() ?? 'scheduled';
       }
     }
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final uid = service.currentUserId;
     final restored = <PlanRoom>[];
     for (final item in list) {
       final id = item['room_id']?.toString() ?? '';
@@ -236,11 +247,13 @@ class RoomsController extends ChangeNotifier {
           final memberId = raw['uid']?.toString() ?? '';
           members.add(RoomMember(
             name: memberId == uid ? '나' : '참여자 ${members.length + 1}',
+            isSelf: memberId == uid,
+            displayNumber: memberId == uid ? null : members.length + 1,
             submitted: raw['submitted'] == true,
           ));
         }
         if (!members.any((m) => m.name == '나')) {
-          members.add(const RoomMember(name: '나', submitted: false));
+          members.add(const RoomMember(name: '나', isSelf: true, submitted: false));
         }
         final my = await service.myRoomPreferences(id);
         final myPrefs = my['preferences'];
@@ -301,28 +314,102 @@ class RoomsController extends ChangeNotifier {
       }
     }
     if (_disposed || generation != _refreshGeneration) return;
+    // A refresh that started before the POST or PUT may carry an older snapshot.
+    for (final current in _rooms) {
+      final revision = _roomCreationChanges[current.id];
+      if (revision == null || revision < generation) continue;
+      final index = restored.indexWhere((room) => room.id == current.id);
+      if (index == -1) {
+        restored.add(current);
+      } else {
+        restored[index] = current;
+      }
+      final owner = _roomOwners[current.id];
+      if (owner != null) owners[current.id] = owner;
+    }
+    _roomCreationChanges.removeWhere((_, revision) => revision < generation);
     _revisions..clear()..addAll(revisions);
     _roomOwners..clear()..addAll(owners);
     _pendingDecisions..clear()..addAll(decisionsByRoom);
     _pendingDateRequests..clear()..addAll(dateRequestsByRoom);
     _rooms..clear()..addAll(restored);
+    logRoomCreation('room refresh applied count=${_rooms.length}');
     notifyListeners();
   }
 
-  Future<PlanRoom> createRemote({
+  Future<RoomCreationResult> createRemote({
     required String title,
     required int capacity,
     required DateTime date,
+    EventCategory category = EventCategory.personal,
   }) async {
     final service = api;
-    if (service == null) throw StateError('API not configured.');
-    final created = await service.createRoom(title, capacity);
-    final id = created['room_id']?.toString() ?? '';
-    if (id.isEmpty) throw const PlanitApiException('방 ID를 받지 못했습니다.');
-    await service.request('PUT', '/rooms/${Uri.encodeComponent(id)}/schedule',
-        body: {'starts_at': date.toUtc().toIso8601String(), 'version': 0});
-    await refresh();
-    return room(id);
+    if (service == null || _disposed) throw StateError('API not configured.');
+    final attempt = (title, capacity);
+    if (_uncertainCreations.contains(attempt)) {
+      throw const RoomCreationUncertain();
+    }
+    if (_creating) {
+      throw StateError('Room creation already in progress.');
+    }
+    _creating = true;
+    try {
+      final owner = service.currentUserId;
+      late final Map<String, dynamic> created;
+      try {
+        created = await service.createRoom(title, capacity, timeout: _createTimeout);
+      } on PlanitApiException catch (error) {
+        if (!error.mayHaveReachedServer) rethrow;
+        _uncertainCreations.add(attempt);
+        throw const RoomCreationUncertain();
+      }
+      final id = created['room_id'];
+      final inviteCode = created['invite_code'];
+      if (id is! String || id.isEmpty || inviteCode is! String || inviteCode.isEmpty) {
+        _uncertainCreations.add(attempt);
+        throw const RoomCreationUncertain();
+      }
+
+      final room = PlanRoom(
+        id: id,
+        title: title,
+        region: '지역 미정',
+        inviteCode: inviteCode,
+        members: const [RoomMember(name: '나', submitted: false, isSelf: true)],
+        capacity: capacity,
+        category: category,
+      );
+      if (_disposed) return (room: room, scheduleSaved: false);
+      if (owner != null) _roomOwners[id] = owner;
+      _publishCreatedRoom(room);
+
+      try {
+        await service.request('PUT', '/rooms/${Uri.encodeComponent(id)}/schedule',
+            timeout: _createTimeout,
+            body: {'starts_at': date.toUtc().toIso8601String(), 'version': 0});
+      } on PlanitApiException {
+        logRoomCreation('room created; schedule not confirmed');
+        return (room: room, scheduleSaved: false);
+      }
+      final scheduled = room.copyWith(date: date);
+      _publishCreatedRoom(scheduled);
+      return (room: scheduled, scheduleSaved: true);
+    } finally {
+      _creating = false;
+    }
+  }
+
+  void _publishCreatedRoom(PlanRoom room) {
+    if (_disposed) return;
+    final index = _rooms.indexWhere((existing) => existing.id == room.id);
+    if (index == -1) {
+      _rooms.insert(0, room);
+    } else {
+      _rooms[index] = room;
+    }
+    _roomCreationChanges[room.id] = _refreshGeneration;
+    logRoomCreation('room list updated count=${_rooms.length} scheduled=${room.date != null}');
+    notifyListeners();
   }
 
   Future<void> joinRemote(String code) async {

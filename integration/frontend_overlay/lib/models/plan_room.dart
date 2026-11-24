@@ -14,15 +14,21 @@ class RoomMember {
     required this.name,
     required this.submitted,
     this.summary = '',
+    this.isSelf = false,
+    this.displayNumber,
   });
   final String name;
   final bool submitted;
   final String summary;
+  final bool isSelf;
+  final int? displayNumber;
 
   RoomMember copyWith({bool? submitted, String? summary}) => RoomMember(
     name: name,
     submitted: submitted ?? this.submitted,
     summary: summary ?? this.summary,
+    isSelf: isSelf,
+    displayNumber: displayNumber,
   );
 }
 

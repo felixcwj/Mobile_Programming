@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../l10n/planit_l10n.dart';
 import 'package:flutter/services.dart';
 import '../models/plan_room.dart';
 import '../models/calendar_event.dart';
@@ -28,11 +29,13 @@ class HomeScreen extends StatefulWidget {
     required this.loginId,
     this.profileRepository,
     this.accounts,
+    this.api,
   });
 
   final String loginId;
   final ProfileRepository? profileRepository;
   final FirebaseAccounts? accounts;
+  final PlanitApi? api;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -54,8 +57,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _roomsController = RoomsController(rooms: [],
-        api: widget.accounts == null ? null : PlanitApi());
+    _roomsController = RoomsController(
+      rooms: [],
+      api: widget.api ?? (widget.accounts == null ? null : PlanitApi()),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadRemote());
     _clock = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() {});
@@ -98,9 +103,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       await _calendarController.refreshRemote();
     } on PlanitApiException catch (e) {
-      if (mounted) _showMessage(e.message);
+      if (mounted) _showMessage(displayError(context, e));
     } catch (_) {
-      if (mounted) _showMessage('서버 데이터를 불러오지 못했습니다. 다시 시도해 주세요.');
+      if (mounted) _showMessage(l10n(context).couldNotLoadServerDataPleaseTry);
     } finally {
       _loadingRemote = false;
     }
@@ -110,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       await widget.accounts?.signOut();
     } catch (_) {
-      if (mounted) _showMessage('로그아웃하지 못했어요. 다시 시도해 주세요.');
+      if (mounted) _showMessage(l10n(context).couldNotSignOutPleaseTryAgain);
       return;
     }
     if (!mounted) return;
@@ -208,16 +213,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _showCreateRoomDialog() async {
-    final result = await Navigator.push<CreatedRoom>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CreateRoomScreen(onJoin: _showJoinRoomDialog),
+    if (_creatingRoom) return;
+    _creatingRoom = true;
+    RoomCreationResult? remote;
+    final route = MaterialPageRoute<CreatedRoom>(
+      builder: (_) => CreateRoomScreen(
+        onJoin: _showJoinRoomDialog,
+        onCreate: !_roomsController.online
+            ? null
+            : (draft) async {
+                try {
+                  remote = await _roomsController.createRemote(
+                    title: draft.name,
+                    capacity: draft.capacity,
+                    date: draft.date,
+                    category: draft.category,
+                  );
+                } on RoomCreationUncertain {
+                  unawaited(_loadRemote());
+                  rethrow;
+                }
+              },
       ),
     );
+    try {
+      logRoomCreation('creation form opened');
+      final result = await Navigator.of(context).push(route);
+      await route.completed;
+      logRoomCreation('creation form closed submitted=${result != null}');
+      if (!mounted || result == null) return;
 
-    if (!mounted || result == null) return;
-
-    if (!_roomsController.online) {
+      final saved = remote;
+      if (saved != null) {
+        _showRoomCreatedDialog(saved.room, scheduleSaved: saved.scheduleSaved);
+        if (!saved.scheduleSaved) unawaited(_loadRemote());
+        return;
+      }
       final room = PlanRoom(
         id: result.code,
         title: result.name,
@@ -226,36 +257,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         region: '지역 미정',
         capacity: result.capacity,
         category: result.category,
-        members: const [RoomMember(name: '나', submitted: false)],
+        members: const [RoomMember(name: '나', isSelf: true, submitted: false)],
       );
       _roomsController.addRoom(room);
       _showRoomCreatedDialog(room);
-      return;
-    }
-    if (_creatingRoom) return;
-    setState(() => _creatingRoom = true);
-    try {
-      final room = await _roomsController.createRemote(
-        title: result.name,
-        capacity: result.capacity,
-        date: result.date,
-      );
-      if (!mounted) return;
-      _showRoomCreatedDialog(room);
-      await _calendarController.refreshRemote();
-    } on PlanitApiException catch (e) {
-      if (mounted) _showMessage(e.message);
     } finally {
-      if (mounted) setState(() => _creatingRoom = false);
+      _creatingRoom = false;
     }
   }
 
-  void _showRoomCreatedDialog(PlanRoom room) {
+  void _showRoomCreatedDialog(PlanRoom room, {bool scheduleSaved = true}) {
+    logRoomCreation('showing invite confirmation');
     showDialog<void>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('방이 만들어졌어요! 🎉'),
+          scrollable: true,
+          title: Text(l10n(dialogContext).roomCreated),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -267,7 +285,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ),
               const SizedBox(height: 18),
-              const Text('초대 코드'),
+              Text(l10n(dialogContext).inviteCode),
               const SizedBox(height: 8),
               SelectableText(
                 room.inviteCode,
@@ -279,7 +297,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text('친구에게 이 코드를 공유해 보세요.', textAlign: TextAlign.center),
+              Text(
+                l10n(dialogContext).shareThisCodeWithYourFriends,
+                textAlign: TextAlign.center,
+              ),
+              if (!scheduleSaved) ...[
+                const SizedBox(height: 12),
+                Text(
+                  l10n(dialogContext).roomScheduleNotConfirmed,
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ],
           ),
           actions: [
@@ -291,11 +319,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 }
               },
               icon: const Icon(Icons.copy),
-              label: const Text('코드 복사'),
+              label: Text(l10n(dialogContext).copyCode),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('확인'),
+              child: Text(l10n(dialogContext).ok),
             ),
           ],
         );
@@ -311,23 +339,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (!mounted || inputCode == null) return;
 
-    if (!RegExp(r'^(?:[A-Za-z0-9#@!]{7}|[A-Za-z0-9]{8})$').hasMatch(inputCode)) {
-      _showMessage('초대 코드는 7자리(기존 방은 8자리)입니다.');
+    if (!RegExp(
+      r'^(?:[A-Za-z0-9#@!]{7}|[A-Za-z0-9]{8})$',
+    ).hasMatch(inputCode)) {
+      _showMessage(l10n(context).inviteCodesHaveCharactersForOlderRooms);
       return;
     }
 
     if (!_roomsController.online) {
       final matches = _rooms.where((r) => r.inviteCode == inputCode);
-      _showMessage(matches.isNotEmpty ? '이미 내 목록에 있는 방이에요.' :
-        '실제 방 참여는 서버 연결 후 가능합니다.');
+      _showMessage(
+        matches.isNotEmpty
+            ? l10n(context).thisRoomIsAlreadyInYourList
+            : l10n(context).connectToTheServerToJoinRooms,
+      );
       return;
     }
     try {
       await _roomsController.joinRemote(inputCode);
       await _calendarController.refreshRemote();
-      if (mounted) _showMessage('약속방에 참여했습니다.');
+      if (mounted) _showMessage(l10n(context).youJoinedTheRoom);
     } on PlanitApiException catch (e) {
-      if (mounted) _showMessage(e.message);
+      if (mounted) _showMessage(displayError(context, e));
     }
   }
 
@@ -388,7 +421,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       children: [
                         const Flexible(child: HomeWordmark()),
                         _HomeIconButton(
-                          tooltip: '프로필',
+                          tooltip: l10n(context).profile,
                           icon: Icons.person_outline_rounded,
                           onPressed: _openProfile,
                           size: 52,
@@ -419,7 +452,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           _HomeIconButton(
-                            tooltip: '캘린더',
+                            tooltip: l10n(context).calendar,
                             icon: Icons.calendar_month_outlined,
                             onPressed: _openCalendar,
                           ),
@@ -436,10 +469,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   vertical: 12,
                                 ),
                               ),
-                              child: const Text('내 약속방'),
+                              child: Text(l10n(context).myRooms),
                             ),
                           _HomeIconButton(
-                            tooltip: '약속방 추가',
+                            tooltip: l10n(context).addARoom,
                             icon: Icons.add_rounded,
                             onPressed: _showAddMenu,
                             iconSize: 36,

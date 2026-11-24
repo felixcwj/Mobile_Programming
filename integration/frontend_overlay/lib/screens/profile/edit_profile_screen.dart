@@ -1,5 +1,6 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../l10n/planit_l10n.dart';
 import '../../models/user_profile.dart';
 import '../../services/profile_repository.dart';
 import '../../services/firebase_accounts.dart';
@@ -57,8 +58,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         SnackBar(
           content: Text(
             widget.repository is FirebaseProfileRepository
-                ? '사진을 열지 못했어요. 250KB 이하의 이미지를 선택해 주세요.'
-                : '사진을 열지 못했어요. 5MB 이하의 이미지로 다시 선택해 주세요.',
+                ? l10n(context).couldNotOpenThePhotoChooseAn
+                : l10n(context).couldNotOpenThePhotoChooseAn2,
           ),
         ),
       );
@@ -82,32 +83,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     } on PlanitApiException catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(displayError(context, error))));
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('저장하지 못했어요. 잠시 후 다시 시도해 주세요.')),
+        SnackBar(
+          content: Text(l10n(context).couldNotSavePleaseTryAgainShortly),
+        ),
       );
     }
   }
 
   Future<void> _account(bool password) async {
     final backend = widget.repository is FirebaseProfileRepository
-        ? widget.repository as FirebaseProfileRepository : null;
+        ? widget.repository as FirebaseProfileRepository
+        : null;
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => AccountEditScreen(
           editPassword: password,
-          onSubmit: backend == null ? null : (current, value) async {
-            if (password) {
-              await backend.changePassword(current, value);
-            } else {
-              await backend.changeId(current, value);
-            }
-          },
+          onSubmit: backend == null
+              ? null
+              : (current, value) async {
+                  if (password) {
+                    await backend.changePassword(current, value);
+                  } else {
+                    await backend.changeId(current, value);
+                  }
+                },
         ),
       ),
     );
@@ -116,8 +122,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         final refreshed = await backend.load();
         if (mounted) Navigator.of(context).pop(refreshed);
       } catch (_) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('변경됐지만 정보를 다시 불러오지 못했습니다. 재로그인해 주세요.')));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(l10n(context).changesWereSavedSignInAgainTo),
+            ),
+          );
       }
     }
   }
@@ -126,7 +136,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) => PopScope(
     canPop: !_saving && !_picking,
     child: Scaffold(
-      appBar: AppBar(title: const Text('나의 정보 수정')),
+      appBar: AppBar(title: Text(l10n(context).editProfile)),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -139,7 +149,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                   children: [
                     ProfileSection(
-                      title: '프로필 사진',
+                      title: l10n(context).profilePhoto,
                       child: Column(
                         children: [
                           ProfileAvatar(bytes: _photo, radius: 48),
@@ -152,14 +162,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 onPressed: _pickPhoto,
                                 icon: const Icon(Icons.photo_library_outlined),
                                 label: Text(
-                                  _picking ? '사진 여는 중…' : '프로필 사진 수정',
+                                  _picking
+                                      ? l10n(context).openingPhoto
+                                      : l10n(context).editProfilePhoto,
                                 ),
                               ),
                               if (_photo != null)
                                 TextButton(
                                   onPressed: () =>
                                       setState(() => _photo = null),
-                                  child: const Text('사진 삭제'),
+                                  child: Text(l10n(context).removePhoto),
                                 ),
                             ],
                           ),
@@ -168,32 +180,39 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                     const SizedBox(height: 18),
                     ProfileSection(
-                      title: '나의 정보',
+                      title: l10n(context).myProfile,
                       child: TextFormField(
                         key: const ValueKey('nickname'),
                         controller: _nickname,
                         maxLength: 12,
-                        decoration: const InputDecoration(
-                          labelText: '닉네임',
+                        maxLengthEnforcement:
+                            MaxLengthEnforcement.truncateAfterCompositionEnds,
+                        decoration: InputDecoration(
+                          labelText: l10n(context).nickname,
                           border: OutlineInputBorder(),
                         ),
-                        validator: (v) => v == null || v.trim().length < 2 || v.trim().length > 12
-                            ? '닉네임은 2~12자로 입력해 주세요.'
+                        validator: (v) =>
+                            v == null ||
+                                v.trim().length < 2 ||
+                                v.trim().length > 12
+                            ? l10n(context).enterANicknameWithCharacters
                             : null,
                       ),
                     ),
                     const SizedBox(height: 18),
                     ProfileSection(
-                      title: '계정 정보',
-                      description: '아이디와 비밀번호 변경에는 계정 인증이 필요해요.',
+                      title: l10n(context).accountInformation,
+                      description: l10n(
+                        context,
+                      ).verifyYourAccountToChangeYourUsername,
                       child: Column(
                         children: [
                           ListTile(
                             contentPadding: EdgeInsets.zero,
-                            title: const Text('아이디 수정'),
+                            title: Text(l10n(context).changeUsername),
                             subtitle: Text(
                               widget.profile.loginId.isEmpty
-                                  ? '아직 등록된 아이디가 없어요'
+                                  ? l10n(context).noUsernameRegisteredYet
                                   : widget.profile.loginId,
                             ),
                             trailing: const Icon(Icons.chevron_right),
@@ -202,8 +221,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           const Divider(),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
-                            title: const Text('비밀번호 수정'),
-                            subtitle: const Text('현재 비밀번호 확인 후 변경'),
+                            title: Text(l10n(context).changePassword),
+                            subtitle: Text(
+                              l10n(
+                                context,
+                              ).verifyYourCurrentPasswordToMakeChanges,
+                            ),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () => _account(true),
                           ),

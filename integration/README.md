@@ -12,7 +12,7 @@
 1. Open the green **PlanIt team integration (Flutter)** workflow on the GitHub Actions tab of this branch.
 2. Under **Artifacts**, download `planit-android-tablet-release` (ZIP) and extract `app-release.apk`.
 3. Send the APK to each test device and install it from Files/Downloads. Grant only the one-off Android permission to install from that file manager if prompted. Do not install unknown APKs from strangers.
-4. Open **플랜잇** → login screen → **팀 서버 연결**, and configure one identical **HTTPS** API URL on every device. The release build defaults to `https://planit-team-backend.vercel.app`; it is not usable until server-side Firebase credentials are configured and its `/health` returns HTTP 200.
+4. Open **플랜잇** → login screen → **Team server** (**팀 서버 연결** in Korean), and configure one identical **HTTPS** API URL on every device. The release build defaults to `https://planit-team-backend.vercel.app`; it is not usable until server-side Firebase credentials are configured and its `/health` returns HTTP 200.
 5. Create two distinct test accounts; room owner creates a room and shares the exact 7-character invite code; the other member joins; then check room appointments and personal calendars on both devices.
 
 The release APK targets Android 13 and is universal (ARM 32/64-bit), not the emulator-only `10.0.2.2` build. It has been booted and gesture-stressed on a simulated 800×1280 low-RAM Android 13 device. The physical school-issued Lenovo tablet and Galaxy still require direct hands-on testing.
@@ -42,6 +42,7 @@ python3 integration/apply_frontend.py
 cd frontend
 flutter --version  # CI-pinned SDK: Flutter 3.41.9 (Dart 3.11.5)
 flutter pub get
+flutter gen-l10n
 flutter analyze
 flutter test
 flutter run -d emulator-5554 --dart-define=PLANIT_API_BASE_URL=http://10.0.2.2:8000
@@ -59,6 +60,12 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 On **a physical phone**, replace `10.0.2.2` with the backend machine's reachable LAN IP; do not expose server private credentials or run an HTTP backend on the public Internet. For iOS simulator on the same Mac the appropriate host is usually localhost. Firebase Auth/Firestore must refer to the **same Firebase project** on both ends.
+
+## App language
+
+PlanIt starts in English regardless of the device language. After signing in, open **Profile → Language** and choose **English** or **한국어**. The setting applies immediately and persists on the device. Account names, room and event titles, server-provided messages and content, and recommendation details retain their original language.
+
+The overlay carries the ARB catalogs and generation config. Run it with `python -X utf8 integration/apply_frontend.py` on Windows. Reapplying the overlay is safe and restores its tracked files in the frontend checkout. Run `flutter gen-l10n` in `frontend` after updating the catalogs.
 
 ## Quality gates (automated checks passed; physical/cloud checks separate)
 - Flutter analyze and tests pass after the overlay.

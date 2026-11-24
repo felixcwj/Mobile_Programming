@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../l10n/planit_l10n.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/plan_room.dart';
@@ -28,26 +29,34 @@ class RoomDetailScreen extends StatelessWidget {
       initialDate: room.date ?? DateTime.now(),
       firstDate: DateTime(1900),
       lastDate: DateTime(2200, 12, 31),
-      helpText: '약속 날짜',
-      confirmText: '선택',
-      cancelText: '취소',
+      helpText: l10n(context).planDate,
+      confirmText: l10n(context).select,
+      cancelText: l10n(context).cancel,
       builder: (context, child) =>
           Theme(data: profileTheme(context), child: child!),
     );
     if (date == null || !context.mounted) return;
     if (controller.online && room.status == RoomStatus.confirmed) {
       try {
-        final proposed = await controller.changeConfirmedDateRemote(room.id, date);
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(proposed
-              ? '약속 날짜 변경 요청을 보냈습니다. 참여자 동의 후 변경됩니다.'
-              : '확정된 약속 날짜를 변경했습니다.'),
-        ));
-      } on PlanitApiException catch (e) {
-        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
+        final proposed = await controller.changeConfirmedDateRemote(
+          room.id,
+          date,
         );
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              proposed
+                  ? l10n(context).dateChangeRequestedTheDateWillChange
+                  : l10n(context).confirmedPlanDateChanged,
+            ),
+          ),
+        );
+      } on PlanitApiException catch (e) {
+        if (context.mounted)
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
       }
       return;
     }
@@ -56,7 +65,7 @@ class RoomDetailScreen extends StatelessWidget {
       initialMinutes: room.date == null
           ? 13 * 60
           : room.date!.hour * 60 + room.date!.minute,
-      title: '약속 시간',
+      title: l10n(context).planTime,
     );
     if (time == null || !context.mounted) return;
     try {
@@ -66,11 +75,15 @@ class RoomDetailScreen extends StatelessWidget {
       } else {
         controller.setDate(room.id, selected);
       }
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('약속 날짜를 저장했어요.')));
+      if (context.mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n(context).planDateSaved)));
     } on PlanitApiException catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)));
+      if (context.mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
     }
   }
 
@@ -78,16 +91,16 @@ class RoomDetailScreen extends StatelessWidget {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('약속 일정을 해제할까요?'),
-        content: const Text('방은 유지되고 캘린더에서 일정만 사라져요.'),
+        title: Text(l10n(context).removeTheScheduledDate),
+        content: Text(l10n(context).theRoomStaysOpenTheEventWill),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
+            child: Text(l10n(context).cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('일정 해제'),
+            child: Text(l10n(context).removeDate),
           ),
         ],
       ),
@@ -100,8 +113,10 @@ class RoomDetailScreen extends StatelessWidget {
           controller.setDate(roomId, null);
         }
       } on PlanitApiException catch (e) {
-        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)));
+        if (context.mounted)
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
       }
     }
   }
@@ -110,13 +125,17 @@ class RoomDetailScreen extends StatelessWidget {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('약속방에서 나갈까요?'),
-        content: const Text('본인만 방에서 나가며 다른 참여자의 약속과 일정은 유지됩니다.'),
+        title: Text(l10n(context).leaveThisRoom),
+        content: Text(l10n(context).otherMembersWillKeepThePlanAnd),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('나가기')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(l10n(context).cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(l10n(context).leave),
+          ),
         ],
       ),
     );
@@ -129,41 +148,63 @@ class RoomDetailScreen extends StatelessWidget {
       }
       if (!context.mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('약속방에서 나갔습니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n(context).youLeftTheRoom)));
     } on PlanitApiException catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
-    }
-  }
-  Future<void> _vote(BuildContext context, String decisionId, bool approve,
-      {required bool dateRequest}) async {
-    try {
-      await controller.voteRemote(roomId, decisionId, approve,
-          dateRequest: dateRequest);
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(approve ? '동의 의견을 제출했습니다.' : '변경 요청을 거절했습니다.'),
-      ));
-    } on PlanitApiException catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      if (context.mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
     }
   }
 
-  Widget _pendingVoteCard(BuildContext context, Map<String, dynamic> item,
-      {required bool dateRequest}) {
-    final id = (dateRequest ? item['request_id'] : item['decision_id'])?.toString() ?? '';
+  Future<void> _vote(
+    BuildContext context,
+    String decisionId,
+    bool approve, {
+    required bool dateRequest,
+  }) async {
+    try {
+      await controller.voteRemote(
+        roomId,
+        decisionId,
+        approve,
+        dateRequest: dateRequest,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            approve
+                ? l10n(context).approvalSubmitted
+                : l10n(context).changeRequestDeclined,
+          ),
+        ),
+      );
+    } on PlanitApiException catch (e) {
+      if (context.mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+    }
+  }
+
+  Widget _pendingVoteCard(
+    BuildContext context,
+    Map<String, dynamic> item, {
+    required bool dateRequest,
+  }) {
+    final id =
+        (dateRequest ? item['request_id'] : item['decision_id'])?.toString() ??
+        '';
     final title = dateRequest
-        ? '약속 날짜 변경 요청 · ${item['date'] ?? ''}'
+        ? l10n(context).dateChangeRequest(item['date']?.toString() ?? '')
         : item['change_type'] == 'preference_update'
-            ? '참여자 약속 조건 변경 요청'
-            : item['change_type'] == 'meeting_update'
-                ? '만남 지역 변경 요청'
-                : '약속 코스 변경 요청';
+        ? l10n(context).requestToChangeMemberPreferences
+        : item['change_type'] == 'meeting_update'
+        ? l10n(context).requestToChangeTheMeetingArea
+        : l10n(context).requestToChangeTheItinerary;
     final busy = controller.isVoting('${roomId}:$id');
     final canVote = controller.canVote(item) && !busy && id.isNotEmpty;
     return Card(
@@ -175,39 +216,45 @@ class RoomDetailScreen extends StatelessWidget {
           children: [
             Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
             if (!canVote && !busy)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(top: 4),
-                child: Text('투표 완료 또는 다른 참여자의 동의를 기다리는 중'),
+                child: Text(l10n(context).alreadyVotedOrWaitingForOtherMembers),
               ),
-            Row(children: [
-              TextButton(
-                onPressed: canVote ? () => _vote(context, id, true,
-                    dateRequest: dateRequest) : null,
-                child: const Text('동의'),
-              ),
-              TextButton(
-                onPressed: canVote ? () => _vote(context, id, false,
-                    dateRequest: dateRequest) : null,
-                child: const Text('거절'),
-              ),
-            ]),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: canVote
+                      ? () => _vote(context, id, true, dateRequest: dateRequest)
+                      : null,
+                  child: Text(l10n(context).approve),
+                ),
+                TextButton(
+                  onPressed: canVote
+                      ? () =>
+                            _vote(context, id, false, dateRequest: dateRequest)
+                      : null,
+                  child: Text(l10n(context).decline),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
+
   Future<void> _copyCode(BuildContext context, String code) async {
     try {
       await Clipboard.setData(ClipboardData(text: code));
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('초대 코드를 복사했어요.')));
+      ).showSnackBar(SnackBar(content: Text(l10n(context).inviteCodeCopied)));
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('코드를 길게 눌러 복사해 주세요.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n(context).pressAndHoldTheCodeToCopy)),
+      );
     }
   }
 
@@ -222,7 +269,7 @@ class RoomDetailScreen extends StatelessWidget {
       final ownMembers = room.members.where((member) => member.name == '나');
       final me = ownMembers.isEmpty ? null : ownMembers.first;
       return RoomPageScaffold(
-        title: '우리의 약속',
+        title: l10n(context).ourPlan,
         child: ListView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
@@ -246,7 +293,7 @@ class RoomDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              '${roomDate(room.date)} · ${room.region}',
+              '${roomDate(room.date, context: context)} · ${room.region == '지역 미정' ? l10n(context).areaUndecided : room.region}',
               style: const TextStyle(
                 color: roomMuted,
                 fontSize: 13,
@@ -261,14 +308,19 @@ class RoomDetailScreen extends StatelessWidget {
                   onPressed: () => _pickSchedule(context, room),
                   icon: const Icon(Icons.calendar_month_outlined, size: 16),
                   label: Text(
-                    room.date == null ? '약속 날짜 정하기' : '약속 날짜 변경',
+                    room.date == null
+                        ? l10n(context).setPlanDate
+                        : l10n(context).changePlanDate,
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),
                 if (room.date != null && room.status != RoomStatus.confirmed)
                   TextButton(
                     onPressed: () => _removeSchedule(context),
-                    child: const Text('일정 해제', style: TextStyle(fontSize: 12)),
+                    child: Text(
+                      l10n(context).removeDate,
+                      style: TextStyle(fontSize: 12),
+                    ),
                   ),
               ],
             ),
@@ -277,8 +329,8 @@ class RoomDetailScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
               child: Row(
                 children: [
-                  const Text(
-                    '초대 코드',
+                  Text(
+                    l10n(context).inviteCode,
                     style: TextStyle(color: roomMuted, fontSize: 11),
                   ),
                   const SizedBox(width: 10),
@@ -294,7 +346,7 @@ class RoomDetailScreen extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    tooltip: '초대 코드 복사',
+                    tooltip: l10n(context).copyInviteCode,
                     onPressed: () => _copyCode(context, room.inviteCode),
                     icon: const Icon(
                       Icons.copy_outlined,
@@ -311,13 +363,24 @@ class RoomDetailScreen extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: FilledButton.icon(
-                    onPressed: room.status == RoomStatus.confirmed ? null : () =>
-                        Navigator.of(context).push(MaterialPageRoute<void>(
-                          builder: (_) => RoomConditionsScreen(
-                            controller: controller, roomId: roomId,
-                            initialDate: room.date, initialRegion: room.region))),
+                    onPressed: room.status == RoomStatus.confirmed
+                        ? null
+                        : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => RoomConditionsScreen(
+                                controller: controller,
+                                roomId: roomId,
+                                initialDate: room.date,
+                                initialRegion: room.region,
+                              ),
+                            ),
+                          ),
                     icon: const Icon(Icons.tune),
-                    label: Text(me.submitted ? '나의 약속 조건 변경' : '나의 약속 조건 입력'),
+                    label: Text(
+                      me.submitted
+                          ? l10n(context).editMyPlanPreferences
+                          : l10n(context).enterMyPlanPreferences,
+                    ),
                   ),
                 )
               else
@@ -335,22 +398,32 @@ class RoomDetailScreen extends StatelessWidget {
               for (final decision in controller.pendingDecisions(roomId))
                 _pendingVoteCard(context, decision, dateRequest: false),
             ],
-            if (controller.online && room.allSubmitted &&
+            if (controller.online &&
+                room.allSubmitted &&
                 room.status != RoomStatus.confirmed)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.auto_awesome),
-                  label: Text(controller.isRecommending(roomId)
-                      ? 'AI 추천 생성 중…' : 'AI 다시 추천받기'),
-                  onPressed: controller.isRecommending(roomId) ? null : () async {
-                    try {
-                      await controller.recommendRemote(roomId);
-                    } on PlanitApiException catch (e) {
-                      if (context.mounted) ScaffoldMessenger.of(context)
-                          .showSnackBar(SnackBar(content: Text(e.message)));
-                    }
-                  },
+                  label: Text(
+                    controller.isRecommending(roomId)
+                        ? l10n(context).generatingAiRecommendations
+                        : l10n(context).regenerateAiRecommendations,
+                  ),
+                  onPressed: controller.isRecommending(roomId)
+                      ? null
+                      : () async {
+                          try {
+                            await controller.recommendRemote(roomId);
+                          } on PlanitApiException catch (e) {
+                            if (context.mounted)
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(displayError(context, e)),
+                                ),
+                              );
+                          }
+                        },
                 ),
               ),
             Wrap(
@@ -359,8 +432,8 @@ class RoomDetailScreen extends StatelessWidget {
               spacing: 12,
               runSpacing: 6,
               children: [
-                const Text(
-                  '참여자',
+                Text(
+                  l10n(context).members,
                   style: TextStyle(
                     color: roomInk,
                     fontSize: 16,
@@ -368,7 +441,9 @@ class RoomDetailScreen extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '입력 완료 ${room.submittedCount}/${room.members.length}',
+                  l10n(
+                    context,
+                  ).submittedCount(room.submittedCount, room.members.length),
                   style: const TextStyle(color: roomMuted, fontSize: 12),
                 ),
               ],
@@ -383,7 +458,7 @@ class RoomDetailScreen extends StatelessWidget {
                         padding: EdgeInsets.symmetric(vertical: 12),
                         child: Divider(height: 1, color: Color(0xFFE6EFF5)),
                       ),
-                    _member(room.members[i]),
+                    _member(context, room.members[i]),
                   ],
                 ],
               ),
@@ -392,8 +467,8 @@ class RoomDetailScreen extends StatelessWidget {
               const SizedBox(height: 24),
               RoomAction(
                 label: room.status == RoomStatus.confirmed
-                    ? '확정된 코스 보기'
-                    : '추천 코스 확인하기',
+                    ? l10n(context).viewConfirmedItinerary
+                    : l10n(context).viewSuggestedItinerary,
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => AiResultScreen(
@@ -412,7 +487,7 @@ class RoomDetailScreen extends StatelessWidget {
                 child: TextButton.icon(
                   onPressed: () => _leaveRoom(context),
                   icon: const Icon(Icons.exit_to_app, size: 18),
-                  label: const Text('약속방 나가기'),
+                  label: Text(l10n(context).leaveRoom),
                 ),
               ),
             ],
@@ -422,7 +497,7 @@ class RoomDetailScreen extends StatelessWidget {
     },
   );
 
-  Widget _member(RoomMember member) => Row(
+  Widget _member(BuildContext context, RoomMember member) => Row(
     key: ValueKey('room-member-${member.name}'),
     children: [
       const CircleAvatar(
@@ -433,7 +508,11 @@ class RoomDetailScreen extends StatelessWidget {
       const SizedBox(width: 10),
       Expanded(
         child: Text(
-          member.name,
+          switch ((member.isSelf, member.displayNumber)) {
+            (true, _) => l10n(context).me,
+            (false, final number?) => l10n(context).numberedMember(number),
+            _ => member.name,
+          },
           style: const TextStyle(
             color: roomInk,
             fontSize: 14,
@@ -451,7 +530,7 @@ class RoomDetailScreen extends StatelessWidget {
       ),
       const SizedBox(width: 5),
       Text(
-        member.submitted ? '입력 완료' : '대기 중',
+        member.submitted ? l10n(context).submitted : l10n(context).pending,
         style: TextStyle(
           color: member.submitted ? roomBlue : roomMuted,
           fontSize: 11,

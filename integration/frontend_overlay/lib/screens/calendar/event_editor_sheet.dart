@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../l10n/planit_l10n.dart';
 
 import '../../models/calendar_event.dart';
 import '../../services/calendar_controller.dart';
 import '../../widgets/scroll_time_picker.dart';
 import '../profile/profile_widgets.dart';
-
-String calendarDateLabel(DateTime date) {
-  const days = ['월', '화', '수', '목', '금', '토', '일'];
-  return '${date.month}월 ${date.day}일 (${days[date.weekday - 1]})';
-}
 
 String calendarTimeLabel(DateTime date) =>
     '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
@@ -112,7 +109,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
         initialDate: initial,
         firstDate: DateTime(1900),
         lastDate: DateTime(2200, 12, 31),
-        helpText: '종료 날짜',
+        helpText: l10n(context).endDate,
       );
       if (selectedDate == null || !mounted) return;
       date = selectedDate;
@@ -128,7 +125,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
             : _endUses24Hour
             ? 1440
             : initial.hour * 60 + initial.minute,
-        title: isStart ? '시작 시간' : '종료 시간',
+        title: isStart ? l10n(context).startTime : l10n(context).endTime,
       );
       if (time == null || !mounted) return;
       picked = scrollTimeOnDate(date, time);
@@ -136,9 +133,9 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
       picked = DateTime(date.year, date.month, date.day + 1);
     }
     if (!isStart && !picked.isAfter(_start)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('종료는 시작보다 나중으로 선택해 주세요.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n(context).chooseAnEndTimeAfterTheStart)),
+      );
       return;
     }
     setState(() {
@@ -177,23 +174,29 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
     setState(() => _submitting = true);
     try {
       await widget.controller.saveRemote(
-      CalendarEvent(
-        id: widget.event?.id ?? widget.controller.newEventId(),
-        title: _title.text.trim(),
-        start: _start,
-        end: _end,
-        allDay: _allDay,
-        repeat: _repeat,
-        category: _category,
-        reminderMinutes: _reminderMinutes,
-        location: _location.text.trim(),
-        notes: _notes.text.trim(),
-      ),
-    );
+        CalendarEvent(
+          id: widget.event?.id ?? widget.controller.newEventId(),
+          title: _title.text.trim(),
+          start: _start,
+          end: _end,
+          allDay: _allDay,
+          repeat: _repeat,
+          category: _category,
+          reminderMinutes: _reminderMinutes,
+          location: _location.text.trim(),
+          notes: _notes.text.trim(),
+        ),
+      );
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('일정 저장 실패: $error')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              l10n(context).eventSaveFailed(displayError(context, error)),
+            ),
+          ),
+        );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -203,20 +206,20 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('일정을 삭제할까요?'),
+        title: Text(l10n(context).deleteThisEvent),
         content: Text(
           _repeat == EventRepeat.none
-              ? '삭제한 일정은 되돌릴 수 없어요.'
-              : '이 일정의 모든 반복 일정이 함께 삭제돼요.',
+              ? l10n(context).deletingThisEventIsPermanent
+              : l10n(context).allOccurrencesOfThisEventWillBe,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
+            child: Text(l10n(context).cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('삭제'),
+            child: Text(l10n(context).delete),
           ),
         ],
       ),
@@ -228,19 +231,25 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
       await widget.controller.deleteRemote(widget.event!.id);
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('일정 삭제 실패: $error')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              l10n(context).eventDeleteFailed(displayError(context, error)),
+            ),
+          ),
+        );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
   }
 
   String get _reminderLabel => switch (_reminderMinutes) {
-    null => '알림 없음',
-    0 => '시작 시간',
-    60 => '1시간 전',
-    1440 => '1일 전',
-    final minutes => '$minutes분 전',
+    null => l10n(context).noReminder,
+    0 => l10n(context).startTime,
+    60 => l10n(context).oneHourBefore,
+    1440 => l10n(context).oneDayBefore,
+    final minutes => l10n(context).minutesBefore(minutes),
   };
 
   @override
@@ -266,20 +275,20 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
             child: Row(
               children: [
                 IconButton(
-                  tooltip: '일정 편집 닫기',
+                  tooltip: l10n(context).closeEventEditor,
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close, size: 21),
                 ),
                 const Spacer(),
                 if (widget.event != null)
                   PopupMenuButton<String>(
-                    tooltip: '일정 메뉴',
+                    tooltip: l10n(context).eventMenu,
                     icon: const Icon(Icons.more_horiz),
                     onSelected: (_) => _delete(),
                     itemBuilder: (_) => [
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'delete',
-                        child: Text('일정 삭제'),
+                        child: Text(l10n(context).deleteEvent),
                       ),
                     ],
                   ),
@@ -302,19 +311,21 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
                         fontWeight: FontWeight.w600,
                       ),
                       maxLength: 100,
-                      decoration: const InputDecoration(
-                        hintText: '제목',
+                      maxLengthEnforcement:
+                          MaxLengthEnforcement.truncateAfterCompositionEnds,
+                      decoration: InputDecoration(
+                        hintText: l10n(context).title,
                         counterText: '',
                         border: InputBorder.none,
                         hintStyle: TextStyle(color: Color(0xFF91ADBF)),
                       ),
                       validator: (text) => text == null || text.trim().isEmpty
-                          ? '제목을 입력해 주세요.'
+                          ? l10n(context).enterATitle
                           : null,
                     ),
                     if (widget.event != null && _repeat != EventRepeat.none)
-                      const Text(
-                        '수정하면 모든 반복 일정에 적용돼요.',
+                      Text(
+                        l10n(context).changesApplyToAllOccurrences,
                         style: TextStyle(
                           fontSize: 12,
                           color: Color(0xFF6C879A),
@@ -338,7 +349,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
                       alignment: Alignment.centerRight,
                       child: FilterChip(
                         key: const ValueKey('event-all-day'),
-                        label: const Text('하루종일'),
+                        label: Text(l10n(context).allDay),
                         selected: _allDay,
                         onSelected: (_) => _toggleAllDay(),
                         showCheckmark: false,
@@ -351,24 +362,24 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
                     _optionRow(
                       Icons.repeat,
                       PopupMenuButton<EventRepeat>(
-                        tooltip: '반복 설정',
+                        tooltip: l10n(context).repeatSettings,
                         initialValue: _repeat,
                         onSelected: (value) => setState(() => _repeat = value),
                         itemBuilder: (_) => [
                           for (final value in EventRepeat.values)
                             PopupMenuItem(
                               value: value,
-                              child: Text(value.label),
+                              child: Text(displayLabel(context, value.label)),
                             ),
                         ],
-                        child: _pill(_repeat.label),
+                        child: _pill(displayLabel(context, _repeat.label)),
                       ),
                     ),
                     const SizedBox(height: 14),
                     _optionRow(
                       Icons.calendar_month_outlined,
                       PopupMenuButton<EventCategory>(
-                        tooltip: '캘린더 분류',
+                        tooltip: l10n(context).calendarCategory,
                         initialValue: _category,
                         onSelected: (value) =>
                             setState(() => _category = value),
@@ -376,11 +387,11 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
                           for (final value in EventCategory.selectable)
                             PopupMenuItem(
                               value: value,
-                              child: Text(value.label),
+                              child: Text(displayLabel(context, value.label)),
                             ),
                         ],
                         child: _pill(
-                          '●  ${_category.label}',
+                          '●  ${displayLabel(context, _category.label)}',
                           color: Color(widget.controller.colorFor(_category)),
                         ),
                       ),
@@ -388,20 +399,20 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
                     _optionRow(
                       Icons.notifications_none_outlined,
                       PopupMenuButton<int>(
-                        tooltip: '알림 시간 설정',
+                        tooltip: l10n(context).reminderTime,
                         initialValue: _reminderMinutes ?? -1,
                         onSelected: (value) => setState(
                           () => _reminderMinutes = value == -1 ? null : value,
                         ),
                         itemBuilder: (_) => [
                           for (final entry in {
-                            -1: '알림 없음',
-                            0: '시작 시간',
-                            5: '5분 전',
-                            10: '10분 전',
-                            30: '30분 전',
-                            60: '1시간 전',
-                            1440: '1일 전',
+                            -1: l10n(context).noReminder,
+                            0: l10n(context).startTime,
+                            5: l10n(context).fiveMinutesBefore,
+                            10: l10n(context).tenMinutesBefore,
+                            30: l10n(context).thirtyMinutesBefore,
+                            60: l10n(context).oneHourBefore,
+                            1440: l10n(context).oneDayBefore,
                           }.entries)
                             PopupMenuItem(
                               value: entry.key,
@@ -412,10 +423,12 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
                       ),
                     ),
                     if (_reminderMinutes != null)
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.only(left: 36, bottom: 8),
                         child: Text(
-                          '알림 시간은 저장되며, 기기 알림은 추후 지원 예정이에요.',
+                          l10n(
+                            context,
+                          ).reminderTimesAreSavedDeviceNotificationsWill,
                           style: TextStyle(
                             fontSize: 12,
                             color: Color(0xFF6C879A),
@@ -427,9 +440,11 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
                       key: const ValueKey('event-location'),
                       controller: _location,
                       maxLength: 200,
-                      decoration: const InputDecoration(
+                      maxLengthEnforcement:
+                          MaxLengthEnforcement.truncateAfterCompositionEnds,
+                      decoration: InputDecoration(
                         icon: Icon(Icons.location_on_outlined),
-                        hintText: '위치',
+                        hintText: l10n(context).location,
                         border: InputBorder.none,
                         counterText: '',
                       ),
@@ -439,11 +454,13 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
                       key: const ValueKey('event-notes'),
                       controller: _notes,
                       maxLength: 2000,
+                      maxLengthEnforcement:
+                          MaxLengthEnforcement.truncateAfterCompositionEnds,
                       minLines: 2,
                       maxLines: 4,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         icon: Icon(Icons.notes_outlined),
-                        hintText: '메모',
+                        hintText: l10n(context).notes,
                         border: InputBorder.none,
                       ),
                     ),
@@ -470,7 +487,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
                   elevation: 0,
                 ),
                 icon: const Icon(Icons.check),
-                label: const Text('저장', style: TextStyle(fontSize: 16)),
+                label: Text(l10n(context).save, style: TextStyle(fontSize: 16)),
               ),
             ),
           ),
@@ -497,7 +514,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
         children: [
           FittedBox(
             child: Text(
-              calendarDateLabel(date),
+              planDateLabel(context, date, includeYear: false),
               style: const TextStyle(fontSize: 13),
             ),
           ),
@@ -505,7 +522,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
           FittedBox(
             child: Text(
               _allDay
-                  ? '하루종일'
+                  ? l10n(context).allDay
                   : isStart
                   ? _startUses24Hour
                         ? '24:00'
