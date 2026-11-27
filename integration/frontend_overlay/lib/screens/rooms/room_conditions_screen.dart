@@ -4,6 +4,7 @@ import '../../l10n/planit_l10n.dart';
 
 import '../../services/planit_api.dart';
 import '../../services/rooms_controller.dart';
+import '../../widgets/numeric_date_time_formatter.dart';
 
 class RoomConditionsScreen extends StatefulWidget {
   const RoomConditionsScreen({
@@ -38,7 +39,17 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
     super.initState();
     _date = widget.initialDate ?? DateTime.now().add(const Duration(days: 1));
     _region.text = widget.initialRegion == '지역 미정' ? '' : widget.initialRegion;
+    final scheduled = widget.initialDate;
+    if (scheduled != null) {
+      final startMinutes = scheduled.hour * 60 + scheduled.minute;
+      _start.text = _formatMinutes(startMinutes);
+      final endMinutes = (startMinutes + 180).clamp(0, 1439);
+      _end.text = _formatMinutes(endMinutes);
+    }
   }
+
+  String _formatMinutes(int minutes) =>
+      '${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}';
 
   @override
   void dispose() {
@@ -166,6 +177,8 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
                 ),
                 TextFormField(
                   controller: _start,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: const [NumericDateTimeFormatter.time()],
                   decoration: InputDecoration(
                     labelText: l10n(context).startTime2,
                   ),
@@ -173,6 +186,8 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
                 ),
                 TextFormField(
                   controller: _end,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: const [NumericDateTimeFormatter.time()],
                   decoration: InputDecoration(
                     labelText: l10n(context).endTime2,
                   ),
