@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/services.dart';
 
 /// Formats numeric date/time input as users type, including pasted digits.
@@ -26,7 +27,7 @@ class NumericDateTimeFormatter extends TextInputFormatter {
     var used = 0;
     for (final group in groups) {
       if (used >= limited.length) break;
-      final end = (used + group).clamp(0, limited.length);
+      final end = math.min(used + group, limited.length);
       if (used > 0) buffer.write(separator);
       buffer.write(limited.substring(used, end));
       used = end;
@@ -34,22 +35,22 @@ class NumericDateTimeFormatter extends TextInputFormatter {
     final formatted = buffer.toString();
 
     final originalOffset =
-        newValue.selection.extentOffset.clamp(0, newValue.text.length);
+        math.max(0, math.min(newValue.selection.extentOffset, newValue.text.length));
     final digitsToCursor = newValue.text
         .substring(0, originalOffset)
         .replaceAll(RegExp(r'\D'), '')
-        .length
-        .clamp(0, limited.length);
+        .length;
+    final boundedDigitsToCursor = math.min(digitsToCursor, limited.length);
     var seen = 0;
     var offset = 0;
     for (var i = 0; i < formatted.length; i++) {
       if (RegExp(r'\d').hasMatch(formatted[i])) seen++;
-      if (seen >= digitsToCursor) {
+      if (seen >= boundedDigitsToCursor) {
         offset = i + 1;
         break;
       }
     }
-    if (digitsToCursor == 0) offset = 0;
+    if (boundedDigitsToCursor == 0) offset = 0;
     if (offset < formatted.length && formatted[offset] == separator &&
         originalOffset >= newValue.text.length) {
       offset++;
