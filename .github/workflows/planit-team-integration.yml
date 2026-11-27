@@ -1,0 +1,113 @@
+name: PlanIt team integration (Flutter)
+on:
+  push:
+    branches:
+      - experiment/planit-team-integration-20261122
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.41.9'
+          cache: true
+      - name: Apply integration implementation
+        run: python3 integration/apply_frontend.py
+      - name: Resolve Flutter dependencies
+        working-directory: frontend
+        run: flutter pub get
+      - name: Static analysis
+        working-directory: frontend
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Widget tests
+        working-directory: frontend
+        run: flutter test
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build Android debug APK (Android emulator backend)
+        working-directory: frontend
+        run: flutter build apk --debug --dart-define=PLANIT_API_BASE_URL=http://10.0.2.2:8000
+      - name: Upload Android emulator and LAN-debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: planit-android-dev-lan
+          path: frontend/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Build universal Android release APK (Lenovo Tab M8 and Galaxy)
+        working-directory: frontend
+        run: flutter build apk --release --dart-define=PLANIT_API_BASE_URL=https://planit-team-backend.vercel.app
+      - name: Upload universal Android release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: planit-android-tablet-release
+          path: frontend/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  android-emulator:
+    name: Boot APK and stress-test login UI
+    needs: flutter
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: planit-android-tablet-release
+          path: android-smoke
+      - name: Boot Android emulator and test APK
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: default
+          arch: x86_64
+          emulator-boot-timeout: 480
+          emulator-options: -no-window -gpu off -no-snapshot -noaudio -no-boot-anim -no-metrics -memory 2048 -cores 2 -skin 800x1280
+          script: |
+            adb install android-smoke/app-release.apk
+            adb logcat -c
+            adb shell am start -W -n com.example.meetsync/.MainActivity
+            sleep 12
+            adb shell pidof com.example.meetsync
+            for i in $(seq 1 15); do adb shell input swipe 230 690 230 130 70; adb shell input swipe 230 150 230 690 70; adb shell input tap 200 650; done
+            adb shell pidof com.example.meetsync
+            if adb logcat -d -b crash | grep -A 15 "FATAL EXCEPTION" | grep -q "com.example.meetsync"; then echo "App crashed during emulator interaction"; exit 1; fi
+            adb exec-out screencap -p > android-smoke/login-screen.png
+      - name: Upload Android login screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: planit-android-tablet-smoke
+          path: android-smoke/login-screen.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend test dependencies
+        working-directory: backend
+        run: python -m pip install -r requirements.txt pytest
+      - name: Validate classroom launcher shell syntax
+        run: bash -n backend/start_classroom.sh
+      - name: Run backend tests with fake Firebase
+        working-directory: backend
+        run: python -m pytest -q
