@@ -45,7 +45,7 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
     if (scheduled != null) {
       final startMinutes = scheduled.hour * 60 + scheduled.minute;
       _start.text = _formatMinutes(startMinutes);
-      final endMinutes = (startMinutes + 180).clamp(0, 1439);
+      final endMinutes = (startMinutes + 180).clamp(0, 1439).toInt();
       _end.text = _formatMinutes(endMinutes);
     }
     _loadSavedPreferences();
