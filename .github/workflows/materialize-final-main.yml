@@ -28,7 +28,7 @@ jobs:
           git rm --cached frontend
           rm -f frontend/.git
           git rm .gitmodules
-          git add -A frontend .gitmodules
+          git add -A frontend
           git status --short
       - uses: subosito/flutter-action@v2
         with:
