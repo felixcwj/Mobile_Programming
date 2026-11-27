@@ -1,4 +1,0 @@
-[submodule "frontend"]
-	path = frontend
-	url = https://github.com/yhooni29/planit_front.git
-	branch = feature/login-update
