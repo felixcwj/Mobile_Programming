@@ -33,6 +33,8 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
   final _end = TextEditingController(text: '18:00');
   late DateTime _date;
   bool _saving = false;
+  bool _loadingSaved = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -45,6 +47,39 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
       _start.text = _formatMinutes(startMinutes);
       final endMinutes = (startMinutes + 180).clamp(0, 1439);
       _end.text = _formatMinutes(endMinutes);
+    }
+    _loadSavedPreferences();
+  }
+
+  Future<void> _loadSavedPreferences() async {
+    try {
+      final service = widget.controller.api;
+      if (service == null) {
+        throw const PlanitApiException('서버에 연결되지 않았습니다.');
+      }
+      final response = await service.myRoomPreferences(widget.roomId);
+      if (!mounted) return;
+      final raw = response['preferences'];
+      if (response['submitted'] == true && raw is Map) {
+        final savedDate = DateTime.tryParse((raw['available_date'] ?? '').toString());
+        final activities = raw['activities'];
+        setState(() {
+          if (savedDate != null) _date = savedDate;
+          _region.text = (raw['region'] ?? _region.text).toString();
+          _start.text = (raw['start_time'] ?? _start.text).toString();
+          _end.text = (raw['end_time'] ?? _end.text).toString();
+          _budget.text = (raw['budget'] ?? _budget.text).toString();
+          if (activities is List) {
+            _activities.text = activities.map((a) => a.toString()).join(', ');
+          }
+          _notes.text = (raw['additional_notes'] ?? '').toString();
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadError = '저장된 조건을 불러오지 못했습니다. 다시 열어 주세요.');
+    } finally {
+      if (mounted) setState(() => _loadingSaved = false);
     }
   }
 
@@ -80,7 +115,7 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
   }
 
   Future<void> _submit() async {
-    if (_saving || !_formKey.currentState!.validate()) return;
+    if (_saving || _loadingSaved || _loadError != null || !_formKey.currentState!.validate()) return;
     if (_start.text.compareTo(_end.text) >= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n(context).theEndTimeMustBeAfterThe)),
@@ -154,6 +189,8 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
+                if (_loadingSaved) const LinearProgressIndicator(),
+                if (_loadError != null) Text(_loadError!, style: const TextStyle(color: Colors.red)),
                 Text(l10n(context).chooseARealLocationInSouthKorea),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -231,7 +268,7 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
                 ),
                 const SizedBox(height: 18),
                 FilledButton(
-                  onPressed: _saving ? null : _submit,
+                  onPressed: _saving || _loadingSaved || _loadError != null ? null : _submit,
                   child: Text(
                     _saving
                         ? l10n(context).verifyingAreaAndSaving
