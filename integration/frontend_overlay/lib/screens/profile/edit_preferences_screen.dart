@@ -4,6 +4,7 @@ import '../../l10n/planit_l10n.dart';
 import '../../models/user_profile.dart';
 import '../../services/profile_repository.dart';
 import 'profile_widgets.dart';
+import '../../widgets/numeric_date_time_formatter.dart';
 
 class EditPreferencesScreen extends StatefulWidget {
   const EditPreferencesScreen({
@@ -200,6 +201,7 @@ class _EditPreferencesScreenState extends State<EditPreferencesScreen> {
                       TextFormField(
                         key: const ValueKey('birthDate'),
                         controller: _birthDate,
+                        inputFormatters: const [NumericDateTimeFormatter.date()],
                         maxLength: 10,
                         keyboardType: TextInputType.datetime,
                         decoration: InputDecoration(
