@@ -18,20 +18,15 @@ class HomePlanTask {
   static List<HomePlanTask> forRooms(List<PlanRoom> rooms, DateTime now) {
     final tasks = <HomePlanTask>[];
     for (final room in rooms) {
-      if (room.status == RoomStatus.confirmed ||
-          (room.date != null &&
-              calendarDay(room.date!).isBefore(calendarDay(now)))) {
+      if (room.date != null &&
+          calendarDay(room.date!).isBefore(calendarDay(now))) {
         continue;
       }
-      final me = room.members.where((member) => member.name == '나');
-      if (me.isEmpty) continue;
-      if (!me.first.submitted) {
-        tasks.add(HomePlanTask(room: room, reviewCourse: false));
-      } else if (room.status == RoomStatus.recommended &&
+      // Upcoming rooms stay visible in To-do after preference submission.
+      final canReview = room.status == RoomStatus.recommended &&
           room.allSubmitted &&
-          room.course.isNotEmpty) {
-        tasks.add(HomePlanTask(room: room, reviewCourse: true));
-      }
+          room.course.isNotEmpty;
+      tasks.add(HomePlanTask(room: room, reviewCourse: canReview));
     }
     tasks.sort((a, b) {
       if (a.room.date == null) return b.room.date == null ? 0 : 1;
@@ -506,7 +501,11 @@ class _TaskTile extends StatelessWidget {
                 Text(
                   task.reviewCourse
                       ? l10n(context).viewSuggestedItinerary
-                      : l10n(context).enterMyPreferences,
+                      : task.room.status == RoomStatus.confirmed
+                          ? displayLabel(context, task.room.status.label)
+                          : task.room.members.any((m) => m.isSelf && m.submitted)
+                              ? displayLabel(context, task.room.status.label)
+                              : l10n(context).enterMyPreferences,
                   style: const TextStyle(
                     color: profileInk,
                     fontSize: 13,
