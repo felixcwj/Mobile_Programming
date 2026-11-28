@@ -9,7 +9,8 @@ import 'package:meetsync/services/rooms_controller.dart';
 import 'package:meetsync/widgets/planit_loading.dart';
 
 class _PreferencesApi extends PlanitApi {
-  _PreferencesApi({this.fail = false});
+  _PreferencesApi({this.fail = false, this.submitted = true});
+  final bool submitted;
   final bool fail;
 
   @override
@@ -31,7 +32,7 @@ class _PreferencesApi extends PlanitApi {
   Future<Map<String, dynamic>> myRoomPreferences(String roomId) async {
     if (fail) throw const PlanitApiException('Unavailable');
     return {
-      'submitted': true,
+      'submitted': submitted,
       'preferences': {
         'available_date': '2031-03-02',
         'region': '성수',
@@ -46,10 +47,10 @@ class _PreferencesApi extends PlanitApi {
 }
 
 class _ConditionsController extends RoomsController {
-  _ConditionsController({bool fail = false})
+  _ConditionsController({bool fail = false, bool submitted = true})
     : super(
         rooms: [],
-        api: _PreferencesApi(fail: fail),
+        api: _PreferencesApi(fail: fail, submitted: submitted),
       );
 
   final saving = Completer<bool>();
@@ -202,4 +203,29 @@ void main() {
     expect(controller.submissions, isEmpty);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('new room starts at its saved 17:00 schedule, not 13:00', (tester) async {
+    final controller = _ConditionsController(submitted: false);
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: RoomConditionsScreen(
+          controller: controller,
+          roomId: 'r1',
+          initialDate: null,
+          initialRegion: '지역 미정',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final start = find.byKey(const ValueKey('condition-start'));
+    await tester.ensureVisible(start);
+    expect(tester.widget<TextFormField>(start).controller!.text, '17:00');
+    final end = find.byKey(const ValueKey('condition-end'));
+    await tester.ensureVisible(end);
+    expect(tester.widget<TextFormField>(end).controller!.text, '20:00');
+    expect(tester.takeException(), isNull);
+  });
+
 }
