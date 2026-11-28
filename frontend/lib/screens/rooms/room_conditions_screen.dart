@@ -61,15 +61,38 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
       if (service == null) {
         throw const PlanitApiException('서버에 연결되지 않았습니다.');
       }
+      // Read the room schedule from the authoritative endpoint. The room
+      // calendar snapshot can be temporarily absent while a room is created.
+      final scheduleResponse = await service.request(
+        'GET', '/rooms/${Uri.encodeComponent(widget.roomId)}/schedule');
+      final schedule = scheduleResponse['schedule'];
+      final scheduled = schedule is Map
+          ? DateTime.tryParse((schedule['starts_at'] ?? '').toString())?.toLocal()
+          : null;
       final response = await service.myRoomPreferences(widget.roomId);
       if (!mounted) return;
       final raw = response['preferences'];
-      if (response['submitted'] == true && raw is Map) {
-        final savedDate = DateTime.tryParse(
-          (raw['available_date'] ?? '').toString(),
-        );
-        final activities = raw['activities'];
+      if (scheduled == null && widget.initialDate == null &&
+          !(response['submitted'] == true && raw is Map)) {
         setState(() {
+          _loadError = '약속 시작 시간이 서버에 저장되지 않았습니다. 방 일정을 먼저 설정해 주세요.';
+          _start.clear();
+          _end.clear();
+        });
+        return;
+      }
+      setState(() {
+        if (scheduled != null) {
+          _date = scheduled;
+          final minutes = scheduled.hour * 60 + scheduled.minute;
+          _start.text = _formatMinutes(minutes);
+          _end.text = _formatMinutes((minutes + 180).clamp(0, 1439).toInt());
+        }
+        if (response['submitted'] == true && raw is Map) {
+          final savedDate = DateTime.tryParse(
+            (raw['available_date'] ?? '').toString(),
+          );
+          final activities = raw['activities'];
           if (savedDate != null) _date = savedDate;
           _region.text = (raw['region'] ?? _region.text).toString();
           _start.text = (raw['start_time'] ?? _start.text).toString();
@@ -79,11 +102,11 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
             _activities.text = activities.map((a) => a.toString()).join(', ');
           }
           _notes.text = (raw['additional_notes'] ?? '').toString();
-        });
-      }
+        }
+      });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadError = '저장된 조건을 불러오지 못했습니다. 다시 열어 주세요.');
+      setState(() => _loadError = '약속 정보를 불러오지 못했습니다. 다시 열어 주세요.');
     } finally {
       if (mounted) setState(() => _loadingSaved = false);
     }
