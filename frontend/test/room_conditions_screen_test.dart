@@ -13,6 +13,21 @@ class _PreferencesApi extends PlanitApi {
   final bool fail;
 
   @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    Map<String, String>? query,
+    bool authenticated = true,
+    Duration timeout = const Duration(seconds: 45),
+  }) async {
+    if (path == '/rooms/r1/schedule') {
+      return {'schedule': {'starts_at': '2031-01-01T17:00:00'}};
+    }
+    throw const PlanitApiException('Unexpected API request');
+  }
+
+  @override
   Future<Map<String, dynamic>> myRoomPreferences(String roomId) async {
     if (fail) throw const PlanitApiException('Unavailable');
     return {
