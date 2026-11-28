@@ -83,7 +83,9 @@ class ProfilePageScaffold extends StatelessWidget {
   );
 }
 
-ThemeData profileTheme(BuildContext context) => Theme.of(context).copyWith(
+ThemeData profileTheme(BuildContext context) => planitTheme(Theme.of(context));
+
+ThemeData planitTheme(ThemeData base) => base.copyWith(
   scaffoldBackgroundColor: profileSurface,
   colorScheme: ColorScheme.fromSeed(
     seedColor: profileBlue,
@@ -94,6 +96,44 @@ ThemeData profileTheme(BuildContext context) => Theme.of(context).copyWith(
     onSurface: profileInk,
     onSurfaceVariant: const Color(0xFF526A7B),
     surface: profileSurface,
+  ),
+  dialogTheme: DialogThemeData(
+    backgroundColor: profileSurface,
+    surfaceTintColor: Colors.transparent,
+    barrierColor: const Color(0x55073365),
+    elevation: 0,
+    constraints: const BoxConstraints(maxWidth: 360),
+    insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(Radius.circular(28)),
+      side: BorderSide(color: Color(0xFFB9E4F8), width: 1.5),
+    ),
+    titleTextStyle: base.textTheme.titleLarge?.copyWith(
+      color: profileInk,
+      fontSize: 20,
+      fontWeight: FontWeight.w600,
+      height: 1.4,
+    ),
+    contentTextStyle: base.textTheme.bodyMedium?.copyWith(
+      color: const Color(0xFF526A7B),
+      fontSize: 14,
+      height: 1.6,
+    ),
+    actionsPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+  ),
+  filledButtonTheme: FilledButtonThemeData(
+    style: FilledButton.styleFrom(
+      backgroundColor: profileBlue,
+      foregroundColor: Colors.white,
+      minimumSize: const Size(48, 48),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    ),
+  ),
+  textButtonTheme: TextButtonThemeData(
+    style: TextButton.styleFrom(
+      foregroundColor: profileBlue,
+      minimumSize: const Size(48, 48),
+    ),
   ),
   appBarTheme: const AppBarTheme(
     backgroundColor: profileSurface,

@@ -6,6 +6,7 @@ import '../../models/calendar_event.dart';
 import '../../services/calendar_controller.dart';
 import '../../widgets/scroll_time_picker.dart';
 import '../profile/profile_widgets.dart';
+import '../../widgets/planit_notice.dart';
 
 String calendarTimeLabel(DateTime date) =>
     '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
@@ -133,8 +134,9 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
       picked = DateTime(date.year, date.month, date.day + 1);
     }
     if (!isStart && !picked.isAfter(_start)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n(context).chooseAnEndTimeAfterTheStart)),
+      showPlanitNotice(
+        context,
+        Text(l10n(context).chooseAnEndTimeAfterTheStart),
       );
       return;
     }
@@ -190,12 +192,9 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              l10n(context).eventSaveFailed(displayError(context, error)),
-            ),
-          ),
+        showPlanitNotice(
+          context,
+          Text(l10n(context).eventSaveFailed(displayError(context, error))),
         );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -232,12 +231,9 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              l10n(context).eventDeleteFailed(displayError(context, error)),
-            ),
-          ),
+        showPlanitNotice(
+          context,
+          Text(l10n(context).eventDeleteFailed(displayError(context, error))),
         );
     } finally {
       if (mounted) setState(() => _submitting = false);

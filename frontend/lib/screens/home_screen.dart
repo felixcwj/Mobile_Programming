@@ -22,6 +22,7 @@ import 'profile/profile_widgets.dart';
 import 'rooms/room_detail_screen.dart';
 import 'rooms/ai_result_screen.dart';
 import 'rooms/rooms_screen.dart';
+import '../widgets/planit_notice.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -30,12 +31,14 @@ class HomeScreen extends StatefulWidget {
     this.profileRepository,
     this.accounts,
     this.api,
+    this.initialRooms = const [],
   });
 
   final String loginId;
   final ProfileRepository? profileRepository;
   final FirebaseAccounts? accounts;
   final PlanitApi? api;
+  final List<PlanRoom> initialRooms;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -58,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _roomsController = RoomsController(
-      rooms: [],
+      rooms: widget.initialRooms,
       api: widget.api ?? (widget.accounts == null ? null : PlanitApi()),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadRemote());
@@ -365,9 +368,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    showPlanitNotice(context, Text(message));
   }
 
   void _openRoom(PlanRoom room) {

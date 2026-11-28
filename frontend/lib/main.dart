@@ -4,6 +4,7 @@ import 'firebase_options.dart';
 import 'l10n/generated/app_localizations.dart';
 import 'l10n/language_settings.dart';
 import 'screens/login_screen.dart';
+import 'screens/profile/profile_widgets.dart';
 import 'services/firebase_accounts.dart';
 import 'services/planit_server_config.dart';
 
@@ -27,11 +28,13 @@ class MeetSyncApp extends StatelessWidget {
     this.accounts,
     this.language,
     this.initialLocale = const Locale('en'),
+    this.home,
   });
 
   final FirebaseAccounts? accounts;
   final LanguageController? language;
   final Locale initialLocale;
+  final Widget? home;
 
   @override
   Widget build(BuildContext context) {
@@ -52,11 +55,7 @@ class MeetSyncApp extends StatelessWidget {
     supportedLocales: AppLocalizations.supportedLocales,
     onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
     debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4F7CFF)),
-      scaffoldBackgroundColor: const Color(0xFFF8FAFC),
-    ),
-    home: LoginScreen(accounts: accounts),
+    theme: planitTheme(ThemeData(useMaterial3: true)),
+    home: home ?? LoginScreen(accounts: accounts),
   );
 }

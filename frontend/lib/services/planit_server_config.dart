@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, kReleaseMode;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The evaluation tablet and team phones use the same APK.  No server address
@@ -11,7 +11,14 @@ class PlanitServerConfig {
   static const storageKey = 'planit_test_backend_url_v1';
   static String _url = buildUrl;
 
-  static String get url => _url;
+  // The local Flutter server proxies these requests to the real HTTPS backend.
+  // Opt in explicitly; release builds always keep their configured server.
+  static String get url =>
+      kIsWeb &&
+          kDebugMode &&
+          const bool.fromEnvironment('PLANIT_USE_DEV_PROXY')
+      ? Uri.base.origin
+      : _url;
 
   static bool isValid(String address) {
     final input = address.trim();

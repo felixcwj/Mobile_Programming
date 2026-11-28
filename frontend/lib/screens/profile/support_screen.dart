@@ -4,6 +4,7 @@ import '../../l10n/planit_l10n.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/support_config.dart';
 import 'profile_widgets.dart';
+import '../../widgets/planit_notice.dart';
 
 class SupportScreen extends StatefulWidget {
   const SupportScreen({
@@ -49,8 +50,8 @@ class _SupportScreenState extends State<SupportScreen> {
   }
 
   void _notice(String text) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    hidePlanitNotice(context);
+    showPlanitNotice(context, Text(text));
   }
 
   Future<void> _openMail() async {

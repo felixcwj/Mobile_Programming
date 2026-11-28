@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "PlanIt 전체 앱 (실제 서버)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/frontend",
+      "program": "${workspaceFolder}/frontend/lib/main.dart",
+      "deviceId": "chrome",
+      "toolArgs": [
+        "--web-port=5173",
+        "--dart-define=PLANIT_USE_DEV_PROXY=true",
+        "--dart-define=PLANIT_API_BASE_URL=https://planit-team-backend.vercel.app"
+      ]
+    },
+    {
+      "name": "PlanIt 화면 미리보기 (로그인 없이)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/frontend",
+      "program": "${workspaceFolder}/frontend/lib/main_preview.dart",
+      "deviceId": "chrome",
+      "toolArgs": ["--web-port=5174"]
+    },
+    {
+      "name": "PlanIt frontend (Chrome)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/frontend",
+      "program": "${workspaceFolder}/frontend/lib/main.dart",
+      "deviceId": "chrome",
+      "toolArgs": ["--web-port=5173"]
+    }
+  ]
+}

@@ -27,6 +27,8 @@ Future<int?> showScrollTimePicker(
 );
 
 class ScrollTimePicker extends StatefulWidget {
+  static const minuteInterval = 10;
+
   const ScrollTimePicker({
     super.key,
     required this.initialMinutes,
@@ -42,9 +44,13 @@ class ScrollTimePicker extends StatefulWidget {
 
 class _ScrollTimePickerState extends State<ScrollTimePicker> {
   late int _hour = widget.initialMinutes ~/ 60;
-  late int _minute = widget.initialMinutes % 60;
+  late int _minute =
+      (widget.initialMinutes % 60 ~/ ScrollTimePicker.minuteInterval) *
+      ScrollTimePicker.minuteInterval;
   late final _hours = FixedExtentScrollController(initialItem: _hour);
-  late final _minutes = FixedExtentScrollController(initialItem: _minute);
+  late final _minutes = FixedExtentScrollController(
+    initialItem: _minute ~/ ScrollTimePicker.minuteInterval,
+  );
 
   @override
   void dispose() {
@@ -128,13 +134,16 @@ class _ScrollTimePickerState extends State<ScrollTimePicker> {
                       key: const ValueKey('time-minute-wheel'),
                       scrollController: _minutes,
                       itemExtent: 40,
-                      onSelectedItemChanged: (minute) =>
-                          setState(() => _minute = _hour == 24 ? 0 : minute),
+                      onSelectedItemChanged: (index) => setState(
+                        () => _minute = _hour == 24
+                            ? 0
+                            : index * ScrollTimePicker.minuteInterval,
+                      ),
                       children: [
                         for (
                           var minute = 0;
                           minute < (_hour == 24 ? 1 : 60);
-                          minute++
+                          minute += ScrollTimePicker.minuteInterval
                         )
                           Center(
                             child: Text(

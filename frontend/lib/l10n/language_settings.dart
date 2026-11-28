@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'planit_l10n.dart';
+import '../widgets/planit_notice.dart';
 
 class LanguageController extends ChangeNotifier {
   LanguageController._(this._preferences)
@@ -87,8 +88,6 @@ Future<void> showLanguageSettings(BuildContext context) async {
     await controller.select(selected);
   } catch (_) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l10n(context).languageSaveFailed)));
+    showPlanitNotice(context, Text(l10n(context).languageSaveFailed));
   }
 }

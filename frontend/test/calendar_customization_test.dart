@@ -91,68 +91,81 @@ void main() {
     },
   );
 
-  testWidgets('Time wheels support minutes, 24:00, 00:00 and cancellation', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(320, 568);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    int? result;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: TextButton(
-              onPressed: () async {
-                result = await showScrollTimePicker(
-                  context,
-                  initialMinutes: 23 * 60 + 59,
-                  title: 'Time',
-                );
-              },
-              child: const Text('Open'),
+  testWidgets(
+    'Time wheels use ten-minute steps, 24:00, 00:00 and cancellation',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      int? result;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () async {
+                  result = await showScrollTimePicker(
+                    context,
+                    initialMinutes: 23 * 60 + 59,
+                    title: 'Time',
+                  );
+                },
+                child: const Text('Open'),
+              ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.tap(find.text('Open'));
-    await tester.pumpAndSettle();
-    expect(find.text('23:59'), findsOneWidget);
-    await selectScrollTime(tester, 24, 0);
-    expect(find.text('24:00'), findsOneWidget);
-    final minuteWheel = tester.widget<CupertinoPicker>(
-      find.byKey(const ValueKey('time-minute-wheel')),
-    );
-    expect(minuteWheel.childDelegate.estimatedChildCount, 1);
-    await tester.tap(find.text('선택'));
-    await tester.pumpAndSettle();
-    expect(result, 1440);
-    expect(
-      scrollTimeOnDate(DateTime(2026, 12, 31), result!),
-      DateTime(2027, 1, 1),
-    );
-    await tester.tap(find.text('Open'));
-    await tester.pumpAndSettle();
-    await selectScrollTime(tester, 0, 0);
-    expect(find.text('00:00'), findsOneWidget);
-    await tester.drag(
-      find.byKey(const ValueKey('time-minute-wheel')),
-      const Offset(0, -40),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('00:01'), findsOneWidget);
-    await tester.tap(find.text('선택'));
-    await tester.pumpAndSettle();
-    expect(result, 1);
-    await tester.tap(find.text('Open'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('취소'));
-    await tester.pumpAndSettle();
-    expect(result, isNull);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      expect(find.text('23:50'), findsOneWidget);
+      final initialMinuteWheel = tester.widget<CupertinoPicker>(
+        find.byKey(const ValueKey('time-minute-wheel')),
+      );
+      expect(initialMinuteWheel.childDelegate.estimatedChildCount, 6);
+      for (var index = 0; index < 6; index++) {
+        initialMinuteWheel.scrollController!.jumpToItem(index);
+        await tester.pumpAndSettle();
+        expect(
+          find.text('23:${(index * 10).toString().padLeft(2, '0')}'),
+          findsOneWidget,
+        );
+      }
+      await selectScrollTime(tester, 24, 0);
+      expect(find.text('24:00'), findsOneWidget);
+      final minuteWheel = tester.widget<CupertinoPicker>(
+        find.byKey(const ValueKey('time-minute-wheel')),
+      );
+      expect(minuteWheel.childDelegate.estimatedChildCount, 1);
+      await tester.tap(find.text('선택'));
+      await tester.pumpAndSettle();
+      expect(result, 1440);
+      expect(
+        scrollTimeOnDate(DateTime(2026, 12, 31), result!),
+        DateTime(2027, 1, 1),
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      await selectScrollTime(tester, 0, 0);
+      expect(find.text('00:00'), findsOneWidget);
+      await tester.drag(
+        find.byKey(const ValueKey('time-minute-wheel')),
+        const Offset(0, -40),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('00:10'), findsOneWidget);
+      await tester.tap(find.text('선택'));
+      await tester.pumpAndSettle();
+      expect(result, 10);
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+      expect(result, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('Event end at 24:00 survives editing and excludes the next day', (
     tester,

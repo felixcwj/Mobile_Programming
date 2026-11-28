@@ -9,6 +9,7 @@ import 'edit_preferences_screen.dart';
 import 'profile_widgets.dart';
 import 'appointment_history_screen.dart';
 import 'support_screen.dart';
+import '../../widgets/planit_notice.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -64,13 +65,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _profile = Future.value(updated);
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          preferences
-              ? l10n(context).preferencesSaved
-              : l10n(context).profileSaved,
-        ),
+    showPlanitNotice(
+      context,
+      Text(
+        preferences
+            ? l10n(context).preferencesSaved
+            : l10n(context).profileSaved,
       ),
     );
   }
@@ -101,8 +101,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await logout();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n(context).couldNotSignOutPleaseTryAgain)),
+      showPlanitNotice(
+        context,
+        Text(l10n(context).couldNotSignOutPleaseTryAgain),
       );
     } finally {
       if (mounted) setState(() => _loggingOut = false);

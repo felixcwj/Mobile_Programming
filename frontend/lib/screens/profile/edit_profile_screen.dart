@@ -8,6 +8,7 @@ import '../../services/planit_api.dart';
 import '../../services/profile_photo.dart';
 import 'account_edit_screen.dart';
 import 'profile_widgets.dart';
+import '../../widgets/planit_notice.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({
@@ -54,13 +55,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (mounted && bytes != null) setState(() => _photo = bytes);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.repository is FirebaseProfileRepository
-                ? l10n(context).couldNotOpenThePhotoChooseAn
-                : l10n(context).couldNotOpenThePhotoChooseAn2,
-          ),
+      showPlanitNotice(
+        context,
+        Text(
+          widget.repository is FirebaseProfileRepository
+              ? l10n(context).couldNotOpenThePhotoChooseAn
+              : l10n(context).couldNotOpenThePhotoChooseAn2,
         ),
       );
     } finally {
@@ -83,16 +83,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     } on PlanitApiException catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(displayError(context, error))));
+      showPlanitNotice(context, Text(displayError(context, error)));
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(l10n(context).couldNotSavePleaseTryAgainShortly),
-        ),
+      showPlanitNotice(
+        context,
+        Text(l10n(context).couldNotSavePleaseTryAgainShortly),
       );
     }
   }
@@ -123,10 +120,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         if (mounted) Navigator.of(context).pop(refreshed);
       } catch (_) {
         if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(l10n(context).changesWereSavedSignInAgainTo),
-            ),
+          showPlanitNotice(
+            context,
+            Text(l10n(context).changesWereSavedSignInAgainTo),
           );
       }
     }

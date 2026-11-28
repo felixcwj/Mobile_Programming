@@ -7,6 +7,7 @@ import '../widgets/planit_mascot.dart';
 import 'home_screen.dart';
 import 'profile/profile_widgets.dart';
 import 'signup_screen.dart';
+import '../widgets/planit_notice.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, this.accounts});
@@ -35,8 +36,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final id = idController.text.trim();
     final password = passwordController.text;
     if (id.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n(context).enterYourUsernameAndPassword)),
+      showPlanitNotice(
+        context,
+        Text(l10n(context).enterYourUsernameAndPassword),
       );
       return;
     }
@@ -68,13 +70,12 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (error) {
       await accounts.signOut();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error is AccountException
-                ? displayError(context, error)
-                : l10n(context).couldNotSignInCheckYourUsername,
-          ),
+      showPlanitNotice(
+        context,
+        Text(
+          error is AccountException
+              ? displayError(context, error)
+              : l10n(context).couldNotSignInCheckYourUsername,
         ),
       );
     } finally {

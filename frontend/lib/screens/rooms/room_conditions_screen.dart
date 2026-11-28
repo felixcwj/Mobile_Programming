@@ -3,8 +3,12 @@ import 'package:flutter/services.dart';
 import '../../l10n/planit_l10n.dart';
 
 import '../../services/planit_api.dart';
+import '../../widgets/planit_loading.dart';
 import '../../services/rooms_controller.dart';
 import '../../widgets/numeric_date_time_formatter.dart';
+import '../profile/profile_widgets.dart';
+import 'room_widgets.dart';
+import '../../widgets/planit_notice.dart';
 
 class RoomConditionsScreen extends StatefulWidget {
   const RoomConditionsScreen({
@@ -61,7 +65,9 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
       if (!mounted) return;
       final raw = response['preferences'];
       if (response['submitted'] == true && raw is Map) {
-        final savedDate = DateTime.tryParse((raw['available_date'] ?? '').toString());
+        final savedDate = DateTime.tryParse(
+          (raw['available_date'] ?? '').toString(),
+        );
         final activities = raw['activities'];
         setState(() {
           if (savedDate != null) _date = savedDate;
@@ -102,6 +108,8 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
       initialDate: _date.isBefore(first) ? first : _date,
       firstDate: first,
       lastDate: DateTime(today.year + 3),
+      builder: (context, child) =>
+          Theme(data: profileTheme(context), child: child!),
     );
     if (chosen != null && mounted) setState(() => _date = chosen);
   }
@@ -115,11 +123,14 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
   }
 
   Future<void> _submit() async {
-    if (_saving || _loadingSaved || _loadError != null || !_formKey.currentState!.validate()) return;
+    if (_saving ||
+        _loadingSaved ||
+        _loadError != null ||
+        !_formKey.currentState!.validate()) {
+      return;
+    }
     if (_start.text.compareTo(_end.text) >= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n(context).theEndTimeMustBeAfterThe)),
-      );
+      showPlanitNotice(context, Text(l10n(context).theEndTimeMustBeAfterThe));
       return;
     }
     final activities = _activities.text
@@ -130,11 +141,13 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
     if (activities.isEmpty ||
         activities.length > 10 ||
         activities.any((a) => a.length > 40)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n(context).enterActivitiesSeparatedByCommas)),
+      showPlanitNotice(
+        context,
+        Text(l10n(context).enterActivitiesSeparatedByCommas),
       );
       return;
     }
+    FocusScope.of(context).unfocus();
     setState(() => _saving = true);
     try {
       final proposed = await widget.controller.saveConditionsRemote(
@@ -148,135 +161,345 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
         notes: _notes.text.trim(),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            proposed
-                ? l10n(context).changeRequestSentWaitingForMembersTo
-                : l10n(context).planPreferencesSaved,
-          ),
+      showPlanitNotice(
+        context,
+        Text(
+          proposed
+              ? l10n(context).changeRequestSentWaitingForMembersTo
+              : l10n(context).planPreferencesSaved,
         ),
       );
       Navigator.pop(context, true);
     } on PlanitApiException catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+      if (mounted) {
+        showPlanitNotice(context, Text(displayError(context, e)));
+      }
     } catch (_) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              l10n(context).couldNotSavePreferencesCheckYourEntries,
-            ),
-          ),
+      if (mounted) {
+        showPlanitNotice(
+          context,
+          Text(l10n(context).couldNotSavePreferencesCheckYourEntries),
         );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(l10n(context).planPreferences)),
-    body: SafeArea(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                if (_loadingSaved) const LinearProgressIndicator(),
-                if (_loadError != null) Text(_loadError!, style: const TextStyle(color: Colors.red)),
-                Text(l10n(context).chooseARealLocationInSouthKorea),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _region,
-                  maxLength: 100,
-                  maxLengthEnforcement:
-                      MaxLengthEnforcement.truncateAfterCompositionEnds,
-                  decoration: InputDecoration(
-                    labelText: l10n(context).preferredArea,
-                    hintText: l10n(context).eGSeongsuJamsil,
-                  ),
-                  validator: (v) => v == null || v.trim().isEmpty
-                      ? l10n(context).enterAnArea
-                      : null,
-                ),
-                ListTile(
-                  title: Text(l10n(context).planDate),
-                  subtitle: Text(planDateLabel(context, _date, weekday: false)),
-                  trailing: const Icon(Icons.calendar_month),
-                  onTap: _pickDate,
-                ),
-                TextFormField(
-                  controller: _start,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: const [NumericDateTimeFormatter.time()],
-                  decoration: InputDecoration(
-                    labelText: l10n(context).startTime2,
-                  ),
-                  validator: _timeValidation,
-                ),
-                TextFormField(
-                  controller: _end,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: const [NumericDateTimeFormatter.time()],
-                  decoration: InputDecoration(
-                    labelText: l10n(context).endTime2,
-                  ),
-                  validator: _timeValidation,
-                ),
-                TextFormField(
-                  controller: _budget,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: l10n(context).budgetPerPersonKrw,
-                  ),
-                  validator: (v) {
-                    final n = int.tryParse(v ?? '');
-                    return n == null || n < 0 || n > 100000000
-                        ? l10n(context).enterAnAmountBetweenAnd
-                        : null;
-                  },
-                ),
-                TextFormField(
-                  controller: _activities,
-                  maxLength: 300,
-                  maxLengthEnforcement:
-                      MaxLengthEnforcement.truncateAfterCompositionEnds,
-                  decoration: InputDecoration(
-                    labelText: l10n(context).preferredActivities,
-                    hintText: l10n(context).eGCafExhibitionWalk,
-                  ),
-                  validator: (v) => v == null || v.trim().isEmpty
-                      ? l10n(context).enterAtLeastOneActivity
-                      : null,
-                ),
-                TextFormField(
-                  controller: _notes,
-                  maxLength: 1000,
-                  maxLengthEnforcement:
-                      MaxLengthEnforcement.truncateAfterCompositionEnds,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    labelText: l10n(context).otherDetailsOptional,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                FilledButton(
-                  onPressed: _saving || _loadingSaved || _loadError != null ? null : _submit,
-                  child: Text(
-                    _saving
-                        ? l10n(context).verifyingAreaAndSaving
-                        : l10n(context).save2,
-                  ),
-                ),
-              ],
+  InputDecoration _decoration(String? label, {String? hint, IconData? icon}) =>
+      InputDecoration(
+        labelText: label,
+        hintText: hint,
+        hintStyle: const TextStyle(color: roomMuted, fontSize: 13),
+        prefixIcon: icon == null ? null : Icon(icon, color: roomBlue, size: 20),
+        filled: true,
+        fillColor: profileWell,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+        alignLabelWithHint: true,
+      );
+
+  Widget _section({
+    required IconData icon,
+    required String title,
+    required List<Widget> children,
+  }) => RoomPanel(
+    padding: const EdgeInsets.all(16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: roomTint,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, size: 20, color: roomBlue),
             ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: roomInk,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        ...children,
+      ],
+    ),
+  );
+
+  Widget _timeField(
+    TextEditingController controller,
+    String label,
+    String key,
+  ) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        label,
+        style: const TextStyle(color: roomMuted, fontSize: 12, height: 1.4),
+      ),
+      const SizedBox(height: 8),
+      Semantics(
+        label: label,
+        child: TextFormField(
+          key: ValueKey(key),
+          controller: controller,
+          keyboardType: TextInputType.number,
+          inputFormatters: const [NumericDateTimeFormatter.time()],
+          decoration: _decoration(null, icon: Icons.schedule_rounded),
+          validator: _timeValidation,
+        ),
+      ),
+    ],
+  );
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_saving,
+    child: RoomPageScaffold(
+      title: l10n(context).planPreferences,
+      child: PlanitLoadingOverlay(
+        loading: _saving,
+        message: l10n(context).verifyingAreaAndSaving,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              Expanded(
+                child: AbsorbPointer(
+                  absorbing: _saving || _loadingSaved,
+                  child: ListView(
+                    key: const ValueKey('room-conditions-scroll'),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                    children: [
+                      if (_loadingSaved) ...[
+                        const LinearProgressIndicator(),
+                        const SizedBox(height: 16),
+                      ],
+                      if (_loadError != null) ...[
+                        RoomPanel(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.info_outline_rounded,
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _loadError!,
+                                  style: const TextStyle(height: 1.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      _section(
+                        icon: Icons.calendar_month_outlined,
+                        title: l10n(context).planDate,
+                        children: [
+                          Material(
+                            color: profileWell,
+                            borderRadius: BorderRadius.circular(18),
+                            clipBehavior: Clip.antiAlias,
+                            child: ListTile(
+                              key: const ValueKey('condition-date'),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
+                              ),
+                              title: Text(
+                                planDateLabel(context, _date, weekday: false),
+                                style: const TextStyle(
+                                  color: roomInk,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              trailing: const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: roomBlue,
+                              ),
+                              onTap: _pickDate,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final start = _timeField(
+                                _start,
+                                l10n(context).startTime,
+                                'condition-start',
+                              );
+                              final end = _timeField(
+                                _end,
+                                l10n(context).endTime,
+                                'condition-end',
+                              );
+                              if (constraints.maxWidth < 280) {
+                                return Column(
+                                  children: [
+                                    start,
+                                    const SizedBox(height: 16),
+                                    end,
+                                  ],
+                                );
+                              }
+                              return Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(child: start),
+                                  const SizedBox(width: 12),
+                                  Expanded(child: end),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _section(
+                        icon: Icons.place_outlined,
+                        title: l10n(context).preferredArea,
+                        children: [
+                          Text(
+                            l10n(context).chooseARealLocationInSouthKorea,
+                            style: const TextStyle(
+                              color: roomMuted,
+                              fontSize: 13,
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            key: const ValueKey('condition-region'),
+                            controller: _region,
+                            maxLength: 100,
+                            maxLengthEnforcement: MaxLengthEnforcement
+                                .truncateAfterCompositionEnds,
+                            decoration: _decoration(
+                              l10n(context).preferredArea,
+                              hint: l10n(context).eGSeongsuJamsil,
+                              icon: Icons.search_rounded,
+                            ),
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? l10n(context).enterAnArea
+                                : null,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            key: const ValueKey('condition-budget'),
+                            controller: _budget,
+                            keyboardType: TextInputType.number,
+                            decoration: _decoration(
+                              l10n(context).budgetPerPersonKrw,
+                              icon: Icons.account_balance_wallet_outlined,
+                            ),
+                            validator: (v) {
+                              final n = int.tryParse(v ?? '');
+                              return n == null || n < 0 || n > 100000000
+                                  ? l10n(context).enterAnAmountBetweenAnd
+                                  : null;
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _section(
+                        icon: Icons.favorite_border_rounded,
+                        title: l10n(context).preferredActivities,
+                        children: [
+                          TextFormField(
+                            key: const ValueKey('condition-activities'),
+                            controller: _activities,
+                            maxLength: 300,
+                            maxLengthEnforcement: MaxLengthEnforcement
+                                .truncateAfterCompositionEnds,
+                            minLines: 2,
+                            maxLines: 4,
+                            decoration: _decoration(
+                              l10n(context).preferredActivities,
+                              hint: l10n(context).eGCafExhibitionWalk,
+                            ),
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? l10n(context).enterAtLeastOneActivity
+                                : null,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            key: const ValueKey('condition-notes'),
+                            controller: _notes,
+                            maxLength: 1000,
+                            maxLengthEnforcement: MaxLengthEnforcement
+                                .truncateAfterCompositionEnds,
+                            minLines: 3,
+                            maxLines: 5,
+                            decoration: _decoration(
+                              l10n(context).otherDetailsOptional,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    key: const ValueKey('condition-save'),
+                    onPressed: _saving || _loadingSaved || _loadError != null
+                        ? null
+                        : _submit,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: roomBlue,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(52),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    icon: _saving
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_rounded, size: 20),
+                    label: Text(
+                      _saving
+                          ? l10n(context).verifyingAreaAndSaving
+                          : l10n(context).save2,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

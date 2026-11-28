@@ -4,6 +4,21 @@
 현재 로그인, 홈, 프로필, 약속방, 캘린더 화면이 연결되어 있습니다.
 Dart 패키지 이름은 `meetsync`입니다.
 
+## 현재 전체 앱 실행 (실제 서버)
+
+VS Code에서 **PlanIt 전체 앱 (실제 서버)**를 선택하고 실행합니다.
+터미널에서는 `frontend` 폴더에서 다음 명령을 사용합니다.
+
+```sh
+flutter run -d chrome --web-port=5173 --dart-define=PLANIT_USE_DEV_PROXY=true --dart-define=PLANIT_API_BASE_URL=https://planit-team-backend.vercel.app
+```
+
+`web_dev_config.yaml`의 Flutter 개발 서버 프록시로 실제 백엔드에 연결합니다.
+개발 서버에서 CORS 오류 없이 인증·약속방·캘린더 API를 사용하며,
+로그인 또는 회원가입에는 실제 계정 정보가 필요합니다.
+이 설정은 웹 디버그 실행에만 적용됩니다.
+**PlanIt 화면 미리보기 (로그인 없이)**는 별도의 샘플 데이터 실행입니다.
+
 ## 개발 환경
 
 - 실행을 확인한 버전: Flutter **3.47.8 stable**, Dart **3.13.7**
@@ -36,16 +51,16 @@ flutter run -d chrome --web-port=5173
 5173 포트를 다른 프로그램이 사용 중이면 `--web-port` 값을 변경하세요.
 다른 컴퓨터에서는 위 명령으로 개발 서버를 직접 실행해야 합니다.
 
-로그인 화면에서는 비어 있지 않은 아이디와 비밀번호를 입력하면 홈으로 이동합니다.
-현재 실제 인증 서버에 연결되어 있지 않으므로 개발 확인용 값을 사용하세요.
-프로필·약속방·일정은 로그인 세션의 메모리에 저장되며,
-로그아웃하거나 앱을 재시작하면 초기화됩니다.
+전체 앱은 실제 가입된 아이디와 비밀번호로 로그인합니다.
+계정이 없으면 로그인 화면의 **Sign up**으로 가입합니다.
+프로필·약속방·일정은 연결된 서버의 계정 데이터를 사용합니다.
+샘플 데이터를 사용하는 별도 화면 미리보기는 앱 재시작 시 초기화됩니다.
 
 ## VS Code 실행
 
 Flutter/Dart 확장이 설치된 VS Code에서 프로젝트 폴더를 열고,
 `flutter pub get --enforce-lockfile`을 한 번 실행합니다.
-실행 및 디버그에서 **PlanIt (Chrome)**을 선택하고 `F5`를 누르면 됩니다.
+실행 및 디버그에서 **PlanIt 전체 앱 (실제 서버)**를 선택하고 `F5`를 누르면 됩니다.
 설정은 [`.vscode/launch.json`](.vscode/launch.json)에 있습니다.
 
 터미널에서 `flutter run`을 실행한 경우 `r`은 Hot reload,
@@ -67,8 +82,9 @@ flutter test
 flutter run -d chrome --web-port=5173 --dart-define=SUPPORT_EMAIL=support@example.com
 ```
 
-기본 웹 실행에는 별도의 API 키나 `.env` 파일이 필요하지 않습니다.
-인증, 실제 초대·참여, AI 추천 생성, 서버 영구 저장은 후속 연동 대상입니다.
+클라이언트 실행에는 별도의 관리자 API 키나 `.env` 파일이 필요하지 않습니다.
+인증·초대·참여·추천·저장은 실제 서버 연결을 사용합니다.
+추천 결과의 제공 여부는 서버의 지도·AI 제공자 설정과 가용 상태에 따릅니다.
 
 ## 코드 안내
 

@@ -126,6 +126,7 @@ class RoomPageScaffold extends StatelessWidget {
       body: SafeArea(
         child: Center(
           child: Container(
+            key: const ValueKey('room-page-frame'),
             constraints: const BoxConstraints(maxWidth: 440),
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
             decoration: BoxDecoration(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/planit_l10n.dart';
 import '../../services/planit_api.dart';
 import '../../services/planit_server_config.dart';
+import '../../widgets/planit_notice.dart';
 
 /// Only a backend URL is entered here; API keys remain in server secrets.
 Future<void> showPlanitServerSettings(BuildContext context) => showDialog<void>(
@@ -59,10 +60,9 @@ class _PlanitServerSettingsDialogState
       }
       await PlanitServerConfig.save(address);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(l10n(context).serverConnectionVerifiedAndAddressSaved),
-        ),
+      showPlanitNotice(
+        context,
+        Text(l10n(context).serverConnectionVerifiedAndAddressSaved),
       );
       Navigator.of(context).pop();
     } catch (error) {

@@ -8,6 +8,7 @@ import '../services/profile_photo.dart';
 import '../services/profile_repository.dart';
 import 'home_screen.dart';
 import 'profile/profile_widgets.dart';
+import '../widgets/planit_notice.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key, this.accounts});
@@ -146,9 +147,7 @@ class _SignupProfileScreenState extends State<_SignupProfileScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    showPlanitNotice(context, Text(message));
   }
 
   Future<void> _pickPhoto() async {

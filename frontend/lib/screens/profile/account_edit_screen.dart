@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../l10n/planit_l10n.dart';
+import '../../widgets/planit_notice.dart';
 
 /// Frontend form only; a verified authentication flow must supply [onSubmit].
 /// Password values are never sent to the profile repository.
@@ -45,10 +46,9 @@ class _AccountEditScreenState extends State<AccountEditScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(l10n(context).couldNotSaveChangesCheckYourEntries),
-        ),
+      showPlanitNotice(
+        context,
+        Text(l10n(context).couldNotSaveChangesCheckYourEntries),
       );
     }
   }

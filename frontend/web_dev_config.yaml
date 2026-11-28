@@ -1,0 +1,8 @@
+# Flutter's local server forwards API requests to the real team backend.
+# This applies only to flutter run; deployed builds use their configured API URL.
+server:
+  host: localhost
+  port: 5173
+  proxy:
+    - regex: '^/(health|auth|users|mypage|rooms|places|calendar)(/|$)'
+      target: https://planit-team-backend.vercel.app

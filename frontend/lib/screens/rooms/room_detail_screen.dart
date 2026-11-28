@@ -10,7 +10,9 @@ import 'room_widgets.dart';
 import 'room_preference_editor.dart';
 import 'room_conditions_screen.dart';
 import '../../services/planit_api.dart';
+import '../../widgets/planit_loading.dart';
 import '../profile/profile_widgets.dart';
+import '../../widgets/planit_notice.dart';
 
 class RoomDetailScreen extends StatelessWidget {
   const RoomDetailScreen({
@@ -43,20 +45,17 @@ class RoomDetailScreen extends StatelessWidget {
           date,
         );
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              proposed
-                  ? l10n(context).dateChangeRequestedTheDateWillChange
-                  : l10n(context).confirmedPlanDateChanged,
-            ),
+        showPlanitNotice(
+          context,
+          Text(
+            proposed
+                ? l10n(context).dateChangeRequestedTheDateWillChange
+                : l10n(context).confirmedPlanDateChanged,
           ),
         );
       } on PlanitApiException catch (e) {
         if (context.mounted)
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+          showPlanitNotice(context, Text(displayError(context, e)));
       }
       return;
     }
@@ -76,14 +75,10 @@ class RoomDetailScreen extends StatelessWidget {
         controller.setDate(room.id, selected);
       }
       if (context.mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l10n(context).planDateSaved)));
+        showPlanitNotice(context, Text(l10n(context).planDateSaved));
     } on PlanitApiException catch (e) {
       if (context.mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+        showPlanitNotice(context, Text(displayError(context, e)));
     }
   }
 
@@ -114,9 +109,7 @@ class RoomDetailScreen extends StatelessWidget {
         }
       } on PlanitApiException catch (e) {
         if (context.mounted)
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+          showPlanitNotice(context, Text(displayError(context, e)));
       }
     }
   }
@@ -148,14 +141,10 @@ class RoomDetailScreen extends StatelessWidget {
       }
       if (!context.mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n(context).youLeftTheRoom)));
+      showPlanitNotice(context, Text(l10n(context).youLeftTheRoom));
     } on PlanitApiException catch (e) {
       if (context.mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+        showPlanitNotice(context, Text(displayError(context, e)));
     }
   }
 
@@ -173,20 +162,17 @@ class RoomDetailScreen extends StatelessWidget {
         dateRequest: dateRequest,
       );
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            approve
-                ? l10n(context).approvalSubmitted
-                : l10n(context).changeRequestDeclined,
-          ),
+      showPlanitNotice(
+        context,
+        Text(
+          approve
+              ? l10n(context).approvalSubmitted
+              : l10n(context).changeRequestDeclined,
         ),
       );
     } on PlanitApiException catch (e) {
       if (context.mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+        showPlanitNotice(context, Text(displayError(context, e)));
     }
   }
 
@@ -247,14 +233,10 @@ class RoomDetailScreen extends StatelessWidget {
     try {
       await Clipboard.setData(ClipboardData(text: code));
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n(context).inviteCodeCopied)));
+      showPlanitNotice(context, Text(l10n(context).inviteCodeCopied));
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n(context).pressAndHoldTheCodeToCopy)),
-      );
+      showPlanitNotice(context, Text(l10n(context).pressAndHoldTheCodeToCopy));
     }
   }
 
@@ -270,228 +252,235 @@ class RoomDetailScreen extends StatelessWidget {
       final me = ownMembers.isEmpty ? null : ownMembers.first;
       return RoomPageScaffold(
         title: l10n(context).ourPlan,
-        child: ListView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: RoomStatusBadge(
-                status: room.status,
-                allSubmitted: room.allSubmitted,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              room.title,
-              style: const TextStyle(
-                fontSize: 24,
-                height: 1.4,
-                fontWeight: FontWeight.w600,
-                color: roomInk,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '${roomDate(room.date, context: context)} · ${room.region == '지역 미정' ? l10n(context).areaUndecided : room.region}',
-              style: const TextStyle(
-                color: roomMuted,
-                fontSize: 13,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 8,
-              children: [
-                TextButton.icon(
-                  onPressed: () => _pickSchedule(context, room),
-                  icon: const Icon(Icons.calendar_month_outlined, size: 16),
-                  label: Text(
-                    room.date == null
-                        ? l10n(context).setPlanDate
-                        : l10n(context).changePlanDate,
-                    style: const TextStyle(fontSize: 12),
-                  ),
+        child: PlanitLoadingOverlay(
+          loading: controller.isRecommending(roomId),
+          message: l10n(context).generatingAiRecommendations,
+          child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: RoomStatusBadge(
+                  status: room.status,
+                  allSubmitted: room.allSubmitted,
                 ),
-                if (room.date != null && room.status != RoomStatus.confirmed)
-                  TextButton(
-                    onPressed: () => _removeSchedule(context),
-                    child: Text(
-                      l10n(context).removeDate,
-                      style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                room.title,
+                style: const TextStyle(
+                  fontSize: 24,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                  color: roomInk,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '${roomDate(room.date, context: context)} · ${room.region == '지역 미정' ? l10n(context).areaUndecided : room.region}',
+                style: const TextStyle(
+                  color: roomMuted,
+                  fontSize: 13,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                children: [
+                  TextButton.icon(
+                    onPressed: () => _pickSchedule(context, room),
+                    icon: const Icon(Icons.calendar_month_outlined, size: 16),
+                    label: Text(
+                      room.date == null
+                          ? l10n(context).setPlanDate
+                          : l10n(context).changePlanDate,
+                      style: const TextStyle(fontSize: 12),
                     ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            RoomPanel(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              child: Row(
-                children: [
-                  Text(
-                    l10n(context).inviteCode,
-                    style: TextStyle(color: roomMuted, fontSize: 11),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: SelectableText(
-                      room.inviteCode,
-                      style: const TextStyle(
-                        color: roomBlue,
-                        fontSize: 13,
-                        letterSpacing: 1,
-                        fontWeight: FontWeight.w600,
+                  if (room.date != null && room.status != RoomStatus.confirmed)
+                    TextButton(
+                      onPressed: () => _removeSchedule(context),
+                      child: Text(
+                        l10n(context).removeDate,
+                        style: TextStyle(fontSize: 12),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: l10n(context).copyInviteCode,
-                    onPressed: () => _copyCode(context, room.inviteCode),
-                    icon: const Icon(
-                      Icons.copy_outlined,
-                      size: 17,
-                      color: roomBlue,
-                    ),
-                  ),
                 ],
               ),
-            ),
-            const SizedBox(height: 18),
-            if (me != null) ...[
-              if (controller.online)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: FilledButton.icon(
-                    onPressed: room.status == RoomStatus.confirmed
-                        ? null
-                        : () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => RoomConditionsScreen(
-                                controller: controller,
-                                roomId: roomId,
-                                initialDate: room.date,
-                                initialRegion: room.region,
+              const SizedBox(height: 12),
+              RoomPanel(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 4,
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      l10n(context).inviteCode,
+                      style: TextStyle(color: roomMuted, fontSize: 11),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: SelectableText(
+                        room.inviteCode,
+                        style: const TextStyle(
+                          color: roomBlue,
+                          fontSize: 13,
+                          letterSpacing: 1,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: l10n(context).copyInviteCode,
+                      onPressed: () => _copyCode(context, room.inviteCode),
+                      icon: const Icon(
+                        Icons.copy_outlined,
+                        size: 17,
+                        color: roomBlue,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              if (me != null) ...[
+                if (controller.online)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: FilledButton.icon(
+                      onPressed: room.status == RoomStatus.confirmed
+                          ? null
+                          : () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => RoomConditionsScreen(
+                                  controller: controller,
+                                  roomId: roomId,
+                                  initialDate: room.date,
+                                  initialRegion: room.region,
+                                ),
                               ),
                             ),
-                          ),
-                    icon: const Icon(Icons.tune),
+                      icon: const Icon(Icons.tune),
+                      label: Text(
+                        me.submitted
+                            ? l10n(context).editMyPlanPreferences
+                            : l10n(context).enterMyPlanPreferences,
+                      ),
+                    ),
+                  )
+                else
+                  RoomPreferenceEditor(
+                    key: ValueKey('room-preferences-$roomId'),
+                    initialText: me.summary,
+                    readOnly: room.status == RoomStatus.confirmed,
+                    onSave: (text) => controller.saveMyPreference(roomId, text),
+                  ),
+                const SizedBox(height: 24),
+              ],
+              if (controller.online) ...[
+                for (final request in controller.pendingDateRequests(roomId))
+                  _pendingVoteCard(context, request, dateRequest: true),
+                for (final decision in controller.pendingDecisions(roomId))
+                  _pendingVoteCard(context, decision, dateRequest: false),
+              ],
+              if (controller.online &&
+                  room.allSubmitted &&
+                  room.status != RoomStatus.confirmed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('generate-room-recommendations'),
+                    icon: const Icon(Icons.auto_awesome),
                     label: Text(
-                      me.submitted
-                          ? l10n(context).editMyPlanPreferences
-                          : l10n(context).enterMyPlanPreferences,
+                      controller.isRecommending(roomId)
+                          ? l10n(context).generatingAiRecommendations
+                          : l10n(context).regenerateAiRecommendations,
+                    ),
+                    onPressed: controller.isRecommending(roomId)
+                        ? null
+                        : () async {
+                            try {
+                              await controller.recommendRemote(roomId);
+                            } on PlanitApiException catch (e) {
+                              if (context.mounted)
+                                showPlanitNotice(
+                                  context,
+                                  Text(displayError(context, e)),
+                                );
+                            }
+                          },
+                  ),
+                ),
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 6,
+                children: [
+                  Text(
+                    l10n(context).members,
+                    style: TextStyle(
+                      color: roomInk,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                )
-              else
-                RoomPreferenceEditor(
-                  key: ValueKey('room-preferences-$roomId'),
-                  initialText: me.summary,
-                  readOnly: room.status == RoomStatus.confirmed,
-                  onSave: (text) => controller.saveMyPreference(roomId, text),
-                ),
-              const SizedBox(height: 24),
-            ],
-            if (controller.online) ...[
-              for (final request in controller.pendingDateRequests(roomId))
-                _pendingVoteCard(context, request, dateRequest: true),
-              for (final decision in controller.pendingDecisions(roomId))
-                _pendingVoteCard(context, decision, dateRequest: false),
-            ],
-            if (controller.online &&
-                room.allSubmitted &&
-                room.status != RoomStatus.confirmed)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.auto_awesome),
-                  label: Text(
-                    controller.isRecommending(roomId)
-                        ? l10n(context).generatingAiRecommendations
-                        : l10n(context).regenerateAiRecommendations,
+                  Text(
+                    l10n(
+                      context,
+                    ).submittedCount(room.submittedCount, room.members.length),
+                    style: const TextStyle(color: roomMuted, fontSize: 12),
                   ),
-                  onPressed: controller.isRecommending(roomId)
-                      ? null
-                      : () async {
-                          try {
-                            await controller.recommendRemote(roomId);
-                          } on PlanitApiException catch (e) {
-                            if (context.mounted)
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(displayError(context, e)),
-                                ),
-                              );
-                          }
-                        },
-                ),
-              ),
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              runSpacing: 6,
-              children: [
-                Text(
-                  l10n(context).members,
-                  style: TextStyle(
-                    color: roomInk,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  l10n(
-                    context,
-                  ).submittedCount(room.submittedCount, room.members.length),
-                  style: const TextStyle(color: roomMuted, fontSize: 12),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            RoomPanel(
-              child: Column(
-                children: [
-                  for (var i = 0; i < room.members.length; i++) ...[
-                    if (i > 0)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12),
-                        child: Divider(height: 1, color: Color(0xFFE6EFF5)),
-                      ),
-                    _member(context, room.members[i]),
-                  ],
                 ],
               ),
-            ),
-            if (room.course.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              RoomAction(
-                label: room.status == RoomStatus.confirmed
-                    ? l10n(context).viewConfirmedItinerary
-                    : l10n(context).viewSuggestedItinerary,
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => AiResultScreen(
-                      roomId: roomId,
-                      controller: controller,
-                      onConfirmed: onConfirmed,
+              const SizedBox(height: 12),
+              RoomPanel(
+                child: Column(
+                  children: [
+                    for (var i = 0; i < room.members.length; i++) ...[
+                      if (i > 0)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Divider(height: 1, color: Color(0xFFE6EFF5)),
+                        ),
+                      _member(context, room.members[i]),
+                    ],
+                  ],
+                ),
+              ),
+              if (room.course.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                RoomAction(
+                  label: room.status == RoomStatus.confirmed
+                      ? l10n(context).viewConfirmedItinerary
+                      : l10n(context).viewSuggestedItinerary,
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => AiResultScreen(
+                        roomId: roomId,
+                        controller: controller,
+                        onConfirmed: onConfirmed,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-            if (controller.online) ...[
-              const SizedBox(height: 22),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () => _leaveRoom(context),
-                  icon: const Icon(Icons.exit_to_app, size: 18),
-                  label: Text(l10n(context).leaveRoom),
+              ],
+              if (controller.online) ...[
+                const SizedBox(height: 22),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () => _leaveRoom(context),
+                    icon: const Icon(Icons.exit_to_app, size: 18),
+                    label: Text(l10n(context).leaveRoom),
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       );
     },

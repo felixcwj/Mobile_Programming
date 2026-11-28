@@ -9,6 +9,7 @@ import '../services/rooms_controller.dart';
 import '../widgets/planit_mascot.dart';
 import '../widgets/scroll_time_picker.dart';
 import 'profile/profile_widgets.dart';
+import '../widgets/planit_notice.dart';
 
 class CreatedRoom {
   final String name;
@@ -133,9 +134,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
 
   void _showError(String message) {
     logRoomCreation('creation form showing recoverable error');
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    showPlanitNotice(context, Text(message));
   }
 
   @override

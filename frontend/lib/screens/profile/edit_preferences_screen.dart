@@ -5,6 +5,7 @@ import '../../models/user_profile.dart';
 import '../../services/profile_repository.dart';
 import 'profile_widgets.dart';
 import '../../widgets/numeric_date_time_formatter.dart';
+import '../../widgets/planit_notice.dart';
 
 class EditPreferencesScreen extends StatefulWidget {
   const EditPreferencesScreen({
@@ -95,9 +96,7 @@ class _EditPreferencesScreenState extends State<EditPreferencesScreen> {
     final birthText = _birthDate.text.trim();
     if (birthText.isNotEmpty && _parseBirth(birthText) == null) {
       _formKey.currentState!.validate();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n(context).checkYourDateOfBirthYyyyMm)),
-      );
+      showPlanitNotice(context, Text(l10n(context).checkYourDateOfBirthYyyyMm));
       return;
     }
     if (!_formKey.currentState!.validate()) return;
@@ -120,10 +119,9 @@ class _EditPreferencesScreenState extends State<EditPreferencesScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(l10n(context).couldNotSavePleaseTryAgainShortly),
-        ),
+      showPlanitNotice(
+        context,
+        Text(l10n(context).couldNotSavePleaseTryAgainShortly),
       );
     }
   }
@@ -201,7 +199,9 @@ class _EditPreferencesScreenState extends State<EditPreferencesScreen> {
                       TextFormField(
                         key: const ValueKey('birthDate'),
                         controller: _birthDate,
-                        inputFormatters: const [NumericDateTimeFormatter.date()],
+                        inputFormatters: const [
+                          NumericDateTimeFormatter.date(),
+                        ],
                         maxLength: 10,
                         keyboardType: TextInputType.datetime,
                         decoration: InputDecoration(

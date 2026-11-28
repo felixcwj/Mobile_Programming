@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../l10n/planit_l10n.dart';
 import 'room_widgets.dart';
+import '../../widgets/planit_notice.dart';
 
 class RoomPreferenceEditor extends StatefulWidget {
   const RoomPreferenceEditor({
@@ -50,9 +51,7 @@ class _RoomPreferenceEditorState extends State<RoomPreferenceEditor> {
     final value = _text.text.trim();
     widget.onSave(value);
     FocusScope.of(context).unfocus();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l10n(context).preferencesSaved2)));
+    showPlanitNotice(context, Text(l10n(context).preferencesSaved2));
   }
 
   @override
