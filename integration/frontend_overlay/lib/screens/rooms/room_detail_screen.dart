@@ -53,10 +53,11 @@ class RoomDetailScreen extends StatelessWidget {
           ),
         );
       } on PlanitApiException catch (e) {
-        if (context.mounted)
+        if (context.mounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+        }
       }
       return;
     }
@@ -75,15 +76,17 @@ class RoomDetailScreen extends StatelessWidget {
       } else {
         controller.setDate(room.id, selected);
       }
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(l10n(context).planDateSaved)));
+      }
     } on PlanitApiException catch (e) {
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+      }
     }
   }
 
@@ -113,10 +116,11 @@ class RoomDetailScreen extends StatelessWidget {
           controller.setDate(roomId, null);
         }
       } on PlanitApiException catch (e) {
-        if (context.mounted)
+        if (context.mounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+        }
       }
     }
   }
@@ -152,10 +156,11 @@ class RoomDetailScreen extends StatelessWidget {
         context,
       ).showSnackBar(SnackBar(content: Text(l10n(context).youLeftTheRoom)));
     } on PlanitApiException catch (e) {
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+      }
     }
   }
 
@@ -183,10 +188,11 @@ class RoomDetailScreen extends StatelessWidget {
         ),
       );
     } on PlanitApiException catch (e) {
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+      }
     }
   }
 
@@ -205,7 +211,7 @@ class RoomDetailScreen extends StatelessWidget {
         : item['change_type'] == 'meeting_update'
         ? l10n(context).requestToChangeTheMeetingArea
         : l10n(context).requestToChangeTheItinerary;
-    final busy = controller.isVoting('${roomId}:$id');
+    final busy = controller.isVoting('$roomId:$id');
     final canVote = controller.canVote(item) && !busy && id.isNotEmpty;
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -416,12 +422,13 @@ class RoomDetailScreen extends StatelessWidget {
                           try {
                             await controller.recommendRemote(roomId);
                           } on PlanitApiException catch (e) {
-                            if (context.mounted)
+                            if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(displayError(context, e)),
                                 ),
                               );
+                            }
                           }
                         },
                 ),

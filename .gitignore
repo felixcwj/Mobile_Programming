@@ -50,3 +50,6 @@ app.*.map.json
 **/serviceAccountKey.json
 **/*firebase-adminsdk*.json
 **/__pycache__/
+
+# Local recovery copies and design verification artifacts
+/local_backups/

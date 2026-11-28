@@ -159,12 +159,13 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
       );
       Navigator.pop(context, true);
     } on PlanitApiException catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -172,6 +173,7 @@ class _RoomConditionsScreenState extends State<RoomConditionsScreen> {
             ),
           ),
         );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

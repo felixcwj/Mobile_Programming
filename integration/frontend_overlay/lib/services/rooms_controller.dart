@@ -513,7 +513,7 @@ class RoomsController extends ChangeNotifier {
       {required bool dateRequest}) async {
     final service = api;
     if (service == null) throw StateError('API not configured.');
-    final key = '${roomId}:${decisionId}';
+    final key = '$roomId:$decisionId';
     if (_voting.contains(key)) return;
     _voting.add(key);
     if (!_disposed) notifyListeners();

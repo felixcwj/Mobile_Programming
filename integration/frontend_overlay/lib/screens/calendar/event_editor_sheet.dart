@@ -189,7 +189,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
       );
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -197,6 +197,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
             ),
           ),
         );
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -231,7 +232,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
       await widget.controller.deleteRemote(widget.event!.id);
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -239,6 +240,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
             ),
           ),
         );
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

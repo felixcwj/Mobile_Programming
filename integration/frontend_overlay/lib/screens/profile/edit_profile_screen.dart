@@ -122,12 +122,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         final refreshed = await backend.load();
         if (mounted) Navigator.of(context).pop(refreshed);
       } catch (_) {
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(l10n(context).changesWereSavedSignInAgainTo),
             ),
           );
+        }
       }
     }
   }

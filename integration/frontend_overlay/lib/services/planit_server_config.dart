@@ -30,7 +30,9 @@ class PlanitServerConfig {
     // Plain HTTP is for debug builds talking to a private development host.
     final host = uri.host.toLowerCase();
     if (host == 'localhost' || host == '127.0.0.1' ||
-        host == '10.0.2.2') return true;
+        host == '10.0.2.2') {
+      return true;
+    }
     final parts = host.split('.');
     if (parts.length != 4) return false;
     final octets = parts.map(int.tryParse).toList();

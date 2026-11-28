@@ -27,7 +27,7 @@ class AiResultScreen extends StatelessWidget {
       );
       return;
     }
-    final link = Uri.parse('https://map.kakao.com/link/map/' + placeId);
+    final link = Uri.parse('https://map.kakao.com/link/map/$placeId');
     try {
       if (!await launchUrl(link, mode: LaunchMode.externalApplication)) {
         throw const FormatException('No map handler');
@@ -66,16 +66,18 @@ class AiResultScreen extends StatelessWidget {
           : controller.confirm(roomId);
       if (confirmed && context.mounted) {
         onConfirmed?.call(controller.room(roomId));
-        if (context.mounted)
+        if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(l10n(context).planSavedToTheServer)),
           );
+        }
       }
     } on PlanitApiException catch (e) {
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(displayError(context, e))));
+      }
     }
   }
 
